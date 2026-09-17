@@ -129,7 +129,7 @@
     html += '</div>';
 
     html += '<div class="btn-row">';
-    html += '<a class="btn" href="#/lesson/new">✏️ 수업 기록</a>';
+    html += '<a class="btn" href="#/lesson/new">✏️ 새 수업 기록</a>';
     html += '<a class="btn" href="#/homework/new">📚 숙제 배정</a>';
     html += '</div>';
 
@@ -140,7 +140,7 @@
 
     html += '<h2 class="section-title">최근 기록</h2>';
     if (!recent.length) {
-      html += '<div class="empty"><span class="empty__icon">📭</span>아직 저장된 수업 기록이 없습니다.<br>위 버튼으로 첫 기록을 남겨 보세요.</div>';
+      html += '<div class="empty"><span class="empty__icon">📭</span>아직 저장된 수업 기록이 없습니다.<br>위의 <b>새 수업 기록</b> 버튼으로 첫 기록을 남겨 보세요.</div>';
     } else {
       html += '<ul class="list">' + recent.map(lessonItemHTML).join('') + '</ul>';
       html += '<a class="btn btn--ghost btn--block" href="#/lessons">전체 기록 보기</a>';
@@ -452,6 +452,8 @@
       }).join('') + '</select>';
     html += '<div class="full"><input type="search" id="fKeyword" placeholder="진도·교사 내용으로 검색" value="' + esc(lessonFilter.keyword) + '"></div>';
     html += '</div>';
+
+    html += '<a class="btn btn--block" href="#/lesson/new" style="margin-bottom:16px">＋ 새 수업 기록 작성</a>';
 
     if (!list.length) {
       html += '<div class="empty"><span class="empty__icon">📋</span>조건에 맞는 기록이 없습니다.</div>';
@@ -1241,7 +1243,7 @@
           if (p[1] === 'new') renderLessonForm(null);
           else if (p[2] === 'edit') renderLessonForm(p[1]);
           else return go('#/lessons');
-          setTab('new'); break;
+          setTab('lessons'); break;
         case 'lessons': renderLessons(); setTab('lessons'); break;
         case 'feedback':
           if (!p[1]) return go('#/lessons');

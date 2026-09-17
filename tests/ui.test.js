@@ -26,6 +26,24 @@ const { chromium } = loadPlaywright();
   console.log('✅ 홈 화면 렌더링');
   await shot('home-empty');
 
+  // 탭은 5개이고 "기록" 탭은 없어야 한다
+  const tabs = await page.$$eval('.tab', els => els.map(e => e.textContent.replace(/[^가-힣]/g, '')));
+  if (tabs.length !== 5) throw new Error('탭 개수가 5개가 아님: ' + JSON.stringify(tabs));
+  if (tabs.some(t => t === '기록')) throw new Error('기록 탭이 아직 남아 있음: ' + JSON.stringify(tabs));
+  console.log('✅ 탭 5개 — ' + JSON.stringify(tabs));
+
+  // 수업 기록 작성으로 가는 길이 홈에 있어야 한다
+  const homeLink = await page.$('a[href="#/lesson/new"]');
+  if (!homeLink) throw new Error('홈에 새 수업 기록 버튼이 없음');
+  await homeLink.click();
+  await page.waitForFunction(() => location.hash === '#/lesson/new');
+  console.log('✅ 홈 버튼 → 수업 기록 작성 이동');
+
+  // 그 화면에서 "피드백" 탭이 켜져 있어야 한다 (없어진 기록 탭 대신)
+  const current = await page.$eval('.tab[aria-current="page"]', el => el.dataset.tab);
+  if (current !== 'lessons') throw new Error('탭 표시가 잘못됨: ' + current);
+  console.log('✅ 기록 작성 화면에서 피드백 탭이 켜짐');
+
   // 학생 추가
   await page.goto(base + '#/student/new');
   await page.waitForSelector('#stuForm');
@@ -91,7 +109,8 @@ const { chromium } = loadPlaywright();
   await page.waitForSelector('.list__item');
   const listText = await page.textContent('.list');
   if (!listText.includes('확정')) throw new Error('목록에 확정 상태가 없음');
-  console.log('✅ 목록에 확정 상태 표시');
+  if (!(await page.$('a[href="#/lesson/new"]'))) throw new Error('기록 목록에 작성 버튼이 없음');
+  console.log('✅ 목록에 확정 상태 표시 + 작성 버튼 있음');
   await shot('lessons');
 
   // 잠금 해제

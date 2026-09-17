@@ -195,11 +195,11 @@ select { background-image: linear-gradient(45deg, transparent 50%, var(--text-di
 }
 .tab {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: 9px 1px 8px; text-decoration: none; color: var(--text-dim);
-  font-size: 10.5px; font-weight: 600; min-width: 0;
+  padding: 9px 2px 8px; text-decoration: none; color: var(--text-dim);
+  font-size: 11px; font-weight: 600; min-width: 0;
 }
 .tab > span:last-child { white-space: nowrap; }
-.tab__icon { font-size: 18px; line-height: 1; }
+.tab__icon { font-size: 19px; line-height: 1; }
 .tab[aria-current="page"] { color: var(--brand); }
 
 /* ── 토스트 알림 ────────────────────────────────── */
