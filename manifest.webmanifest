@@ -7,11 +7,11 @@
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ffffff",
-  "theme_color": "#1f6feb",
+  "theme_color": "#14315c",
   "lang": "ko",
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%231f6feb'/%3E%3Ctext x='256' y='340' font-size='260' text-anchor='middle' fill='white'%3E%F0%9F%93%9D%3C/text%3E%3C/svg%3E",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%2314315c'/%3E%3Ctext x='256' y='340' font-size='260' text-anchor='middle' fill='white'%3E%F0%9F%93%9D%3C/text%3E%3C/svg%3E",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"

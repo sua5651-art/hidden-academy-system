@@ -129,19 +129,19 @@
     html += '</div>';
 
     html += '<div class="btn-row">';
-    html += '<a class="btn" href="#/lesson/new">✏️ 수업 기록</a>';
-    html += '<a class="btn" href="#/homework/new">📚 숙제 배정</a>';
-    html += '<a class="btn" href="#/counsel/new">💬 상담 기록</a>';
-    html += '<a class="btn" href="#/reports">📊 월간 리포트</a>';
+    html += '<a class="btn" href="#/lesson/new">수업 기록</a>';
+    html += '<a class="btn" href="#/homework/new">숙제 배정</a>';
+    html += '<a class="btn" href="#/counsel/new">상담 기록</a>';
+    html += '<a class="btn" href="#/reports">월간 리포트</a>';
     html += '</div>';
 
     // 시험 대비 — 다가오는 시험과 남은 기간 (기능 3)
     var exams = Store.getExams({ upcoming: true });
-    html += '<div class="card" style="margin-top:14px"><h3 class="card__title">📝 시험 대비' +
-            '<a href="#/exams" style="float:right;font-size:12.5px;font-weight:600">전체 보기</a></h3>';
+    html += '<div class="card" style="margin-top:14px"><h3 class="card__title">시험 대비' +
+            '<a href="#/exams" style="float:right;font-size:12.5px;font-weight:600;color:var(--brand)">전체 보기</a></h3>';
     if (!exams.length) {
       html += '<div class="list__meta" style="margin-bottom:12px">등록된 시험 정보가 없습니다.</div>';
-      html += '<a class="btn btn--sm btn--block" href="#/exam/new">＋ 학교 시험 정보 등록</a>';
+      html += '<a class="btn btn--sm btn--block" href="#/exam/new">+ 학교 시험 정보 등록</a>';
     } else {
       html += exams.slice(0, 3).map(function (ex) {
         var studs = Store.getExamStudents(ex.id);
@@ -155,14 +155,14 @@
             ' · 준비 완료 ' + ready + '/' + studs.length + '명</div>' +
         '</a>';
       }).join('');
-      html += '<a class="btn btn--sm btn--ghost btn--block" href="#/exam/new">＋ 시험 정보 등록</a>';
+      html += '<a class="btn btn--sm btn--ghost btn--block" href="#/exam/new">+ 시험 정보 등록</a>';
     }
     html += '</div>';
 
     // 다음 확인일이 다가온 상담 (기능 5)
     var due = Store.getUpcomingChecks(3);
     if (due.length) {
-      html += '<div class="note note--warn" style="margin-top:14px"><b>📅 곧 확인할 상담 ' + due.length + '건</b><ul>';
+      html += '<div class="note note--warn" style="margin-top:14px"><b>곧 확인할 상담 ' + due.length + '건</b><ul>';
       html += due.slice(0, 4).map(function (c) {
         var when = c.overdue ? '<b>' + (-c.dday) + '일 지남</b>' : (c.dday === 0 ? '<b>오늘</b>' : 'D-' + c.dday);
         return '<li><a href="#/counsel/' + esc(c.id) + '">' + esc(c.studentName) + ' · ' +
@@ -218,8 +218,8 @@
 
     var html = '';
     html += '<div class="field"><input type="search" id="stuSearch" placeholder="학생 이름·학교로 검색" value="' + esc(studentKeyword) + '"></div>';
-    html += '<a class="btn btn--block" href="#/student/new">＋ 학생 추가</a>';
-    html += '<label class="field" style="display:flex;align-items:center;gap:8px;margin:14px 0 8px;font-size:13px;color:var(--text-dim)">' +
+    html += '<a class="btn btn--block" href="#/student/new">+ 학생 추가</a>';
+    html += '<label class="field" class="check-label check-label--help" style="margin:16px 0 10px">' +
             '<input type="checkbox" id="showArchived" style="width:auto" ' + (showArchivedStudents ? 'checked' : '') + '> 보관된 학생도 보기</label>';
 
     if (!list.length) {
@@ -285,7 +285,7 @@
       html += '<div class="card"><h3 class="card__title">기본 숙제 <small>매번 자동으로 불러올 반복 숙제</small></h3>';
       html += '<div id="defList">' + (defaults.length ? defaults.map(function (i) { return hwEditRow('base', i); }).join('') : hwEditRow('base', {})) + '</div>';
       html += '<div class="btn-row" style="margin-top:8px">';
-      html += '<button type="button" class="btn btn--ghost btn--sm" id="addDef">＋ 줄 추가</button>';
+      html += '<button type="button" class="btn btn--ghost btn--sm" id="addDef">+ 줄 추가</button>';
       html += '<button type="button" class="btn btn--sm" id="saveDef">기본 숙제 저장</button></div>';
       html += '<div class="note note--info" style="margin-top:12px">여기 등록한 숙제는 <b>숙제를 배정할 때 자동으로 채워집니다.</b><br>' +
               '그날그날 고친 내용은 이 기본 숙제를 바꾸지 않습니다.</div>';
@@ -296,11 +296,11 @@
       var hwCount = Store.getHomeworks({ studentId: id }).length;
       var lesCount = Store.getLessons({ studentId: id }).length;
       html += '<div class="card"><h3 class="card__title">이 학생의 기록</h3><div class="btn-row">';
-      html += '<a class="btn btn--ghost btn--sm" href="#/lessons">📋 수업 ' + lesCount + '건</a>';
-      html += '<a class="btn btn--ghost btn--sm" href="#/homeworks">📚 숙제 ' + hwCount + '건</a>';
-      html += '<a class="btn btn--ghost btn--sm" href="#/counsels?student=' + esc(id) + '">💬 상담 ' + cnsCount + '건</a>';
+      html += '<a class="btn btn--ghost btn--sm" href="#/lessons">수업 ' + lesCount + '건</a>';
+      html += '<a class="btn btn--ghost btn--sm" href="#/homeworks">숙제 ' + hwCount + '건</a>';
+      html += '<a class="btn btn--ghost btn--sm" href="#/counsels?student=' + esc(id) + '">상담 ' + cnsCount + '건</a>';
       var rptCount = Store.getReports({ studentId: id }).length;
-      html += '<a class="btn btn--ghost btn--sm" href="#/reports?student=' + esc(id) + '">📊 리포트 ' + rptCount + '건</a>';
+      html += '<a class="btn btn--ghost btn--sm" href="#/reports?student=' + esc(id) + '">리포트 ' + rptCount + '건</a>';
       html += '</div>';
       // 이 학생 학교·학년에 맞는 시험 (기능 1 — 자동 연결 결과를 학생 쪽에서도 보여 준다)
       var myExams = Store.getExams({ upcoming: true }).filter(function (ex) {
@@ -311,13 +311,13 @@
       if (myExams.length) {
         html += '<div class="btn-row" style="margin-top:8px">' + myExams.slice(0, 2).map(function (ex) {
           var d = Store.examDday(ex);
-          return '<a class="btn btn--ghost btn--sm" href="#/prep/' + esc(ex.id) + '/' + esc(id) + '">📝 ' +
+          return '<a class="btn btn--ghost btn--sm" href="#/prep/' + esc(ex.id) + '/' + esc(id) + '">' +
             esc(ex.term) + ' (' + esc(ExamEngine.ddayLabel(d)) + ')</a>';
         }).join('') + '</div>';
       }
       html += '<div class="btn-row" style="margin-top:8px">';
-      html += '<a class="btn btn--sm" href="#/counsel/new?student=' + esc(id) + '">＋ 상담 기록 작성</a>';
-      html += '<a class="btn btn--sm" href="#/report/new?student=' + esc(id) + '">＋ 월간 리포트</a>';
+      html += '<a class="btn btn--sm" href="#/counsel/new?student=' + esc(id) + '">+ 상담 기록 작성</a>';
+      html += '<a class="btn btn--sm" href="#/report/new?student=' + esc(id) + '">+ 월간 리포트</a>';
       html += '</div></div>';
 
       html += '<div class="note note--info" style="margin-top:16px">학생 정보는 삭제되지 않습니다. 더 이상 다니지 않는 학생은 <b>보관</b> 처리하면 목록에서만 숨겨지고 기록은 그대로 남습니다.</div>';
@@ -361,7 +361,7 @@
 
   function field(label, control, required, hint) {
     return '<div class="field"><label>' + esc(label) +
-      (required ? '<span class="req">*</span>' : '<span class="opt">선택</span>') +
+      (required ? '<span class="req">*</span>' : '<span class="opt">(선택)</span>') +
       (hint ? '<span class="hint">' + esc(hint) + '</span>' : '') +
       '</label>' + control + '</div>';
   }
@@ -381,7 +381,7 @@
     if (!students.length) {
       setHeader('수업 기록', '', true);
       view.innerHTML = '<div class="empty"><span class="empty__icon">👥</span>먼저 학생을 등록해야 수업 기록을 작성할 수 있습니다.</div>' +
-                       '<a class="btn btn--block" href="#/student/new">＋ 학생 추가하러 가기</a>';
+                       '<a class="btn btn--block" href="#/student/new">+ 학생 추가하러 가기</a>';
       return;
     }
 
@@ -527,7 +527,7 @@
     html += '<div class="full"><input type="search" id="fKeyword" placeholder="진도·교사 내용으로 검색" value="' + esc(lessonFilter.keyword) + '"></div>';
     html += '</div>';
 
-    html += '<a class="btn btn--block" href="#/lesson/new" style="margin-bottom:16px">＋ 새 수업 기록 작성</a>';
+    html += '<a class="btn btn--block" href="#/lesson/new" style="margin-bottom:16px">+ 새 수업 기록 작성</a>';
 
     if (!list.length) {
       html += '<div class="empty"><span class="empty__icon">📋</span>조건에 맞는 기록이 없습니다.</div>';
@@ -586,7 +586,7 @@
     // 생성 버튼
     var engineLabel = settings.engine === 'ai' ? 'AI 다듬기' : '규칙 기반';
     html += '<div class="btn-row">';
-    html += '<button class="btn" id="genBtn"' + (isFinal ? ' disabled' : '') + '>🤖 피드백 생성 <small style="font-weight:400;opacity:.85">(' + esc(engineLabel) + ')</small></button>';
+    html += '<button class="btn" id="genBtn"' + (isFinal ? ' disabled' : '') + '>피드백 생성 <small style="font-weight:400;opacity:.85">(' + esc(engineLabel) + ')</small></button>';
     html += '</div>';
     if (settings.engine === 'ai' && !AIClient.isConfigured(settings)) {
       html += '<div class="note note--warn" style="margin-top:10px">AI 사용으로 설정돼 있지만 API 키(또는 프록시 주소)가 없습니다. 생성 시 규칙 기반으로 대신 만듭니다.</div>';
@@ -610,12 +610,12 @@
     html += '<div class="fb-preview" id="preview">' + esc(fb.text || '아직 생성되지 않았습니다. 위의 "피드백 생성" 버튼을 눌러 주세요.') + '</div>';
 
     html += '<div class="btn-row" style="margin-top:14px">';
-    html += '<button class="btn btn--ghost" id="copyBtn">📋 복사</button>';
+    html += '<button class="btn btn--ghost" id="copyBtn">복사</button>';
     if (isFinal) {
-      html += '<button class="btn btn--ghost" id="unlockBtn">🔓 수정 잠금 해제</button>';
+      html += '<button class="btn btn--ghost" id="unlockBtn">수정 잠금 해제</button>';
     } else {
       html += '<button class="btn btn--ghost" id="saveDraftBtn">임시 저장</button>';
-      html += '<button class="btn btn--ok" id="finalBtn">✅ 최종 확정</button>';
+      html += '<button class="btn btn--ok" id="finalBtn">최종 확정</button>';
     }
     html += '</div>';
 
@@ -829,7 +829,7 @@
     html += '<div class="stat"><span class="stat__num">' + stats.homeworksTotal + '</span><span class="stat__label">전체 기록</span></div>';
     html += '</div>';
 
-    html += '<a class="btn btn--block" href="#/homework/new">＋ 숙제 배정하기</a>';
+    html += '<a class="btn btn--block" href="#/homework/new">+ 숙제 배정하기</a>';
 
     html += '<div class="filters" style="margin-top:16px">';
     html += '<select id="hwStudent"><option value="">전체 학생</option>' + students.map(function (s) {
@@ -902,7 +902,7 @@
     if (!students.length) {
       setHeader('숙제 배정', '', true);
       view.innerHTML = '<div class="empty"><span class="empty__icon">👥</span>먼저 학생을 등록해야 숙제를 배정할 수 있습니다.</div>' +
-                       '<a class="btn btn--block" href="#/student/new">＋ 학생 추가하러 가기</a>';
+                       '<a class="btn btn--block" href="#/student/new">+ 학생 추가하러 가기</a>';
       return;
     }
 
@@ -922,23 +922,23 @@
       }).join('') + '</select>', true, '학생을 고르면 기본 숙제가 자동으로 채워집니다.');
 
     html += '<div class="filters">';
-    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">반 / 레벨</label>' +
+    html += '<div><label class="field__label">반 / 레벨</label>' +
             '<input type="text" name="className" id="hwClass" value="' + esc(record ? record.className : '') + '" placeholder="자동 입력"></div>';
-    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">담당 교사</label>' +
+    html += '<div><label class="field__label">담당 교사</label>' +
             '<input type="text" name="teacher" id="hwTeacher" value="' + esc(record ? record.teacher : '') + '" list="teacherList" placeholder="자동 입력"></div>';
     html += '<datalist id="teacherList">' + teachers.map(function (t) { return '<option value="' + esc(t) + '">'; }).join('') + '</datalist>';
-    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">숙제 날짜<span class="req">*</span></label>' +
+    html += '<div><label class="field__label">숙제 날짜<span class="req">*</span></label>' +
             '<input type="date" name="date" value="' + esc(record ? record.date : Store.todayStr()) + '" required></div>';
-    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">제출 예정일</label>' +
+    html += '<div><label class="field__label">제출 예정일</label>' +
             '<input type="date" name="dueDate" value="' + esc(record ? record.dueDate : '') + '"></div>';
     html += '</div></div>';
 
     // 기본 숙제
     html += '<div class="card"><h3 class="card__title">기본 숙제 <small>학생에게 등록된 반복 숙제</small></h3>';
     html += '<div id="baseList">' + (baseItems.length ? baseItems.map(function (i) { return hwEditRow('base', i); }).join('') : hwEditRow('base', {})) + '</div>';
-    html += '<div class="btn-row" style="margin-top:8px"><button type="button" class="btn btn--ghost btn--sm" id="addBase">＋ 기본 숙제 줄 추가</button>';
-    html += '<button type="button" class="btn btn--ghost btn--sm" id="reloadBase">↻ 기본 숙제 다시 불러오기</button></div>';
-    html += '<label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;color:var(--text-dim)">' +
+    html += '<div class="btn-row" style="margin-top:8px"><button type="button" class="btn btn--ghost btn--sm" id="addBase">+ 기본 숙제 줄 추가</button>';
+    html += '<button type="button" class="btn btn--ghost btn--sm" id="reloadBase">기본 숙제 다시 불러오기</button></div>';
+    html += '<label class="check-label check-label--help" style="margin-top:16px">' +
             '<input type="checkbox" id="saveAsDefault" style="width:auto;margin-top:3px">' +
             '<span>여기서 고친 내용을 <b>이 학생의 기본 숙제로도 저장</b>합니다.<br>' +
             '체크하지 않으면 오늘 기록에만 반영되고 학생의 기본 숙제는 그대로 유지됩니다.</span></label>';
@@ -947,7 +947,7 @@
     // 오늘 추가 숙제
     html += '<div class="card"><h3 class="card__title">오늘 추가 숙제 <small>이 날짜에만 해당</small></h3>';
     html += '<div id="extraList">' + (extraItems.length ? extraItems.map(function (i) { return hwEditRow('extra', i); }).join('') : hwEditRow('extra', {})) + '</div>';
-    html += '<div class="btn-row" style="margin-top:8px"><button type="button" class="btn btn--ghost btn--sm" id="addExtra">＋ 추가 숙제 줄 추가</button></div>';
+    html += '<div class="btn-row" style="margin-top:8px"><button type="button" class="btn btn--ghost btn--sm" id="addExtra">+ 추가 숙제 줄 추가</button></div>';
     html += '</div>';
 
     html += '<div class="btn-row"><button type="submit" class="btn btn--block">' + (isNew ? '저장하기' : '수정 내용 저장') + '</button></div>';
@@ -1094,7 +1094,7 @@
               esc(new Date(tc.at || Date.now()).toLocaleString('ko-KR')) + ' 확인 완료</div>';
       html += '<button class="btn btn--ghost btn--block" id="uncheckBtn">확인 표시 해제</button>';
     } else {
-      html += '<button class="btn btn--ok btn--block" id="checkBtn">✅ 확인 완료로 표시</button>';
+      html += '<button class="btn btn--ok btn--block" id="checkBtn">확인 완료로 표시</button>';
     }
     html += '</div>';
 
@@ -1103,8 +1103,8 @@
     html += '<div id="hwWarnArea"></div>';
     html += '<div class="fb-preview" id="hwMessage">' + esc(hw.message && hw.message.text ? hw.message.text : '아래 "문장 만들기" 버튼을 눌러 주세요.') + '</div>';
     html += '<div class="btn-row" style="margin-top:12px">';
-    html += '<button class="btn" id="hwGenBtn">📝 문장 만들기</button>';
-    html += '<button class="btn btn--ghost" id="hwCopyBtn">📋 복사</button>';
+    html += '<button class="btn" id="hwGenBtn">문장 만들기</button>';
+    html += '<button class="btn btn--ghost" id="hwCopyBtn">복사</button>';
     html += '</div>';
 
     view.innerHTML = html;
@@ -1210,7 +1210,7 @@
     html += '<div class="stat ' + (stats.counselsDueSoon ? 'stat--alert' : '') + '"><span class="stat__num">' + stats.counselsDueSoon + '</span><span class="stat__label">확인일 임박</span></div>';
     html += '</div>';
 
-    html += '<a class="btn btn--block" href="#/counsel/new' + (cnsFilter.studentId ? '?student=' + esc(cnsFilter.studentId) : '') + '">＋ 상담 기록 작성</a>';
+    html += '<a class="btn btn--block" href="#/counsel/new' + (cnsFilter.studentId ? '?student=' + esc(cnsFilter.studentId) : '') + '">+ 상담 기록 작성</a>';
 
     html += '<div class="filters" style="margin-top:16px">';
     html += '<select id="cnsStudent"><option value="">전체 학생</option>' + students.map(function (st) {
@@ -1259,7 +1259,7 @@
     if (!students.length) {
       setHeader('상담 기록', '', true);
       view.innerHTML = '<div class="empty"><span class="empty__icon">👥</span>먼저 학생을 등록해야 상담을 기록할 수 있습니다.</div>' +
-                       '<a class="btn btn--block" href="#/student/new">＋ 학생 추가하러 가기</a>';
+                       '<a class="btn btn--block" href="#/student/new">+ 학생 추가하러 가기</a>';
       return;
     }
 
@@ -1278,16 +1278,16 @@
       }).join('') + '</select>', true);
 
     html += '<div class="filters">';
-    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">상담일<span class="req">*</span></label>' +
+    html += '<div><label class="field__label">상담일<span class="req">*</span></label>' +
             '<input type="date" name="date" value="' + esc(c ? c.date : Store.todayStr()) + '" required></div>';
-    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">상담 교사</label>' +
+    html += '<div><label class="field__label">상담 교사</label>' +
             '<input type="text" name="counselor" id="cnsCounselor" value="' + esc(c ? c.counselor : '') + '" list="cnsTeacherList" placeholder="자동 입력">' +
             '<datalist id="cnsTeacherList">' + teachers.map(function (t) { return '<option value="' + esc(t) + '">'; }).join('') + '</datalist></div>';
-    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">상담 대상<span class="req">*</span></label>' +
+    html += '<div><label class="field__label">상담 대상<span class="req">*</span></label>' +
             '<select name="target">' + Store.COUNSEL_TARGETS.map(function (t) {
               return '<option value="' + esc(t.code) + '"' + ((c ? c.target : 'parent') === t.code ? ' selected' : '') + '>' + esc(t.label) + '</option>';
             }).join('') + '</select></div>';
-    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">상담 유형<span class="req">*</span></label>' +
+    html += '<div><label class="field__label">상담 유형<span class="req">*</span></label>' +
             '<select name="type">' + Store.COUNSEL_TYPES.map(function (t) {
               return '<option value="' + esc(t.code) + '"' + ((c ? c.type : 'regular') === t.code ? ' selected' : '') + '>' + esc(t.label) + '</option>';
             }).join('') + '</select></div>';
@@ -1304,7 +1304,7 @@
     html += '</div>';
 
     html += '<div class="card"><h3 class="card__title">후속조치 · 다음 확인일</h3>';
-    html += '<label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:14px;font-weight:600">' +
+    html += '<label class="check-label" style="margin-bottom:14px">' +
             '<input type="checkbox" name="followUpNeeded" id="fuNeeded" style="width:auto"' + (fu.needed ? ' checked' : '') + '> 후속조치가 필요합니다</label>';
     html += '<div id="fuBox"' + (fu.needed ? '' : ' hidden') + '>';
     html += field('후속조치 내용', '<textarea name="followUpText" placeholder="예: 2주 뒤 단어 시험 결과 정리해서 다시 연락">' + esc(fu.text || '') + '</textarea>');
@@ -1387,7 +1387,7 @@
         (c.summary.edited ? ' · 직접 수정함' : '') + '</div>';
     }
     html += '<div class="btn-row" style="margin-top:12px">';
-    html += '<button class="btn" id="cnsGenBtn">🤖 요약 만들기</button>';
+    html += '<button class="btn" id="cnsGenBtn">요약 만들기</button>';
     html += '<button class="btn btn--ghost" id="cnsSaveSummaryBtn">요약 저장</button>';
     html += '</div></div>';
 
@@ -1411,7 +1411,7 @@
         html += '<div class="note note--ok">' + esc(new Date(fu.doneAt || Date.now()).toLocaleString('ko-KR')) + ' 완료 처리</div>';
         html += '<button class="btn btn--ghost btn--block" id="fuUndoBtn">완료 표시 해제</button>';
       } else {
-        html += '<button class="btn btn--ok btn--block" id="fuDoneBtn">✅ 후속조치 완료로 표시</button>';
+        html += '<button class="btn btn--ok btn--block" id="fuDoneBtn">후속조치 완료로 표시</button>';
       }
       html += '</div>';
     }
@@ -1508,7 +1508,7 @@
     var list = Store.getExams();
     var html = '';
 
-    html += '<a class="btn btn--block" href="#/exam/new">＋ 학교 시험 정보 등록</a>';
+    html += '<a class="btn btn--block" href="#/exam/new">+ 학교 시험 정보 등록</a>';
     html += '<div class="note note--info" style="margin-top:14px">학교·학년별로 <b>한 번만 등록</b>하면 그 학교 학생들에게 자동으로 연결됩니다.</div>';
 
     if (!list.length) {
@@ -1550,10 +1550,10 @@
 
     var html = '<form id="examForm"><div class="card"><h3 class="card__title">학교 공통 정보 <small>이 학교 학생 모두에게 적용</small></h3>';
     html += '<div class="filters">';
-    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">학교명<span class="req">*</span></label>' +
+    html += '<div><label class="field__label">학교명<span class="req">*</span></label>' +
             '<input type="text" name="school" id="exSchool" value="' + esc(e ? e.school : '') + '" list="schoolList" required placeholder="예: 정왕중">' +
             '<datalist id="schoolList">' + Object.keys(schools).map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist></div>';
-    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">학년</label>' +
+    html += '<div><label class="field__label">학년</label>' +
             '<input type="text" name="grade" id="exGrade" value="' + esc(e ? e.grade : '') + '" list="gradeList" placeholder="비우면 학교 전체">' +
             '<datalist id="gradeList">' + Object.keys(grades).map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist></div>';
     html += '</div>';
@@ -1567,14 +1567,14 @@
     // 시험범위 = 단원 목록
     html += '<div class="card"><h3 class="card__title">시험범위 (단원) <small>학생별 준비 상태의 기준이 됩니다</small></h3>';
     html += '<div id="unitList">' + (units.length ? units.map(function (u) { return hwEditRow('unit', { id: u.id, text: u.name }); }).join('') : hwEditRow('unit', {})) + '</div>';
-    html += '<div class="btn-row" style="margin-top:8px"><button type="button" class="btn btn--ghost btn--sm" id="addUnit">＋ 단원 추가</button></div>';
+    html += '<div class="btn-row" style="margin-top:8px"><button type="button" class="btn btn--ghost btn--sm" id="addUnit">+ 단원 추가</button></div>';
     html += field('시험범위 참고 메모', '<textarea name="rangeNote" placeholder="예: 교과서 본문 + 워크북 문제, 부교재 3~4과">' + esc(e ? e.rangeNote : '') + '</textarea>');
     html += '</div>';
 
     // 문법 범위
     html += '<div class="card"><h3 class="card__title">문법 범위 <small>학생별 취약 문법 선택지가 됩니다</small></h3>';
     html += '<div id="grammarList">' + (grammar.length ? grammar.map(function (g) { return hwEditRow('grammar', { id: g.id, text: g.name }); }).join('') : hwEditRow('grammar', {})) + '</div>';
-    html += '<div class="btn-row" style="margin-top:8px"><button type="button" class="btn btn--ghost btn--sm" id="addGrammar">＋ 문법 추가</button></div>';
+    html += '<div class="btn-row" style="margin-top:8px"><button type="button" class="btn btn--ghost btn--sm" id="addGrammar">+ 문법 추가</button></div>';
     html += '</div>';
 
     html += '<div class="card"><h3 class="card__title">수행평가 · 서술형</h3>';
@@ -1763,7 +1763,7 @@
 
     html += '<div class="card"><h3 class="card__title">오답 · 보강</h3>';
     html += field('오답 수', '<input type="number" name="wrongCount" min="0" value="' + esc(prep.wrongCount || 0) + '">', false, '시험 대비 문제집에서 틀린 문항 수');
-    html += '<label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:14px;font-weight:600">' +
+    html += '<label class="check-label" style="margin-bottom:14px">' +
             '<input type="checkbox" name="needsExtra" id="needsExtra" style="width:auto"' + (prep.needsExtra ? ' checked' : '') + '> 보강이 필요합니다</label>';
     html += '<div id="extraBox"' + (prep.needsExtra ? '' : ' hidden') + '>';
     html += field('보강 내용', '<textarea name="extraNote" placeholder="예: 주말 보강 1회 — 관계대명사 집중">' + esc(prep.extraNote) + '</textarea>');
@@ -1777,10 +1777,10 @@
     html += '<div id="prepWarnArea"></div>';
     html += '<div class="fb-preview" id="checklistBox">' + esc((prep.checklist && prep.checklist.text) || '아래 버튼을 눌러 체크리스트를 만들어 주세요.') + '</div>';
     html += '<div class="btn-row" style="margin-top:12px">';
-    html += '<button class="btn" id="checklistBtn">📋 체크리스트 만들기</button>';
+    html += '<button class="btn" id="checklistBtn">체크리스트 만들기</button>';
     html += '<button class="btn btn--ghost" id="checklistCopyBtn">복사</button>';
     html += '</div>';
-    html += '<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--text-dim)">' +
+    html += '<label class="check-label check-label--help" style="margin-top:14px">' +
             '<input type="checkbox" id="includeDone" style="width:auto"> 이미 끝낸 항목도 함께 넣기</label>';
 
     view.innerHTML = html;
@@ -1871,7 +1871,7 @@
     setHeader('월간 리포트', who ? who + ' 학생' : '', !!rptFilter.studentId);
 
     var html = '';
-    html += '<a class="btn btn--block" href="#/report/new' + (rptFilter.studentId ? '?student=' + esc(rptFilter.studentId) : '') + '">＋ 월간 리포트 만들기</a>';
+    html += '<a class="btn btn--block" href="#/report/new' + (rptFilter.studentId ? '?student=' + esc(rptFilter.studentId) : '') + '">+ 월간 리포트 만들기</a>';
     html += '<div class="note note--info" style="margin-top:14px">한 달치 <b>수업 · 숙제 · 상담 기록</b>을 모아 초안을 만들어 드립니다. 만든 뒤 직접 고칠 수 있습니다.</div>';
 
     html += '<div class="field"><select id="rptStudent"><option value="">전체 학생</option>' + students.map(function (st) {
@@ -1901,7 +1901,7 @@
     if (!students.length) {
       setHeader('월간 리포트', '', true);
       view.innerHTML = '<div class="empty"><span class="empty__icon">👥</span>먼저 학생을 등록해야 리포트를 만들 수 있습니다.</div>' +
-                       '<a class="btn btn--block" href="#/student/new">＋ 학생 추가하러 가기</a>';
+                       '<a class="btn btn--block" href="#/student/new">+ 학생 추가하러 가기</a>';
       return;
     }
     setHeader('월간 리포트 만들기', '', true);
@@ -2006,7 +2006,7 @@
     html += '</dl>';
     html += '<div class="note note--info" style="margin-top:12px">이 리포트는 <b>위 기간의 기록</b>으로 만들었습니다. 이후에 원본 기록이 바뀌어도 이 리포트는 그대로 남습니다.</div>';
     html += '<div class="btn-row" style="margin-top:12px">';
-    html += '<button class="btn btn--ghost btn--sm" id="rptRegenBtn"' + (isFinal ? ' disabled' : '') + '>↻ 다시 집계해서 초안 새로 만들기</button>';
+    html += '<button class="btn btn--ghost btn--sm" id="rptRegenBtn"' + (isFinal ? ' disabled' : '') + '>다시 집계해서 초안 새로 만들기</button>';
     html += '</div></div>';
 
     html += '<div id="rptWarnArea"></div>';
@@ -2026,12 +2026,12 @@
     html += '<div class="fb-preview" id="rptPreviewBox">' + esc(rep.text || '문단을 채운 뒤 아래 버튼을 눌러 주세요.') + '</div>';
 
     html += '<div class="btn-row" style="margin-top:14px">';
-    html += '<button class="btn btn--ghost" id="rptCopyBtn">📋 복사</button>';
+    html += '<button class="btn btn--ghost" id="rptCopyBtn">복사</button>';
     if (isFinal) {
-      html += '<button class="btn btn--ghost" id="rptUnlockBtn">🔓 수정 잠금 해제</button>';
+      html += '<button class="btn btn--ghost" id="rptUnlockBtn">수정 잠금 해제</button>';
     } else {
       html += '<button class="btn btn--ghost" id="rptSaveBtn">임시 저장</button>';
-      html += '<button class="btn btn--ok" id="rptFinalBtn">✅ 최종 확정</button>';
+      html += '<button class="btn btn--ok" id="rptFinalBtn">최종 확정</button>';
     }
     html += '</div>';
 
@@ -2206,8 +2206,8 @@
     html += '<div class="card"><h3 class="card__title">백업 / 복원</h3>';
     html += '<div class="list__meta" style="margin-bottom:12px">현재 저장된 데이터: 학생 ' + stats.students + '명 · 수업 기록 ' + stats.lessonsTotal + '건 (확정 ' + stats.finalized + '건)</div>';
     html += '<div class="btn-row">';
-    html += '<button class="btn btn--ghost" id="exportBtn">⬇ 백업 파일 내려받기</button>';
-    html += '<button class="btn btn--ghost" id="importBtn">⬆ 백업 파일 가져오기</button>';
+    html += '<button class="btn btn--ghost" id="exportBtn">백업 파일 내려받기</button>';
+    html += '<button class="btn btn--ghost" id="importBtn">백업 파일 가져오기</button>';
     html += '</div>';
     html += '<input type="file" id="importFile" accept="application/json,.json" hidden>';
     html += '<div class="note note--info" style="margin-top:12px">가져오기는 <b>병합</b>입니다. 기존 데이터를 지우지 않고, 없는 기록만 추가합니다.</div>';
