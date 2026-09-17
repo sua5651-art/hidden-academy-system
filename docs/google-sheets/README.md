@@ -71,7 +71,9 @@ var SECRET = 'hidden-2026-kQ7xR2mZ9pLw';
 
 > 이 경고는 정상입니다. 원장님이 직접 만든 스크립트라서 구글이 아직 모른다는 뜻입니다.
 
-6. **웹 앱 URL**을 복사합니다 — `https://script.google.com/macros/s/.../exec` 형태
+6. **웹 앱 URL**을 복사합니다
+   - `https://script.google.com/macros/s/` 로 시작하고 `/exec` 로 끝나는 긴 주소입니다.
+   - **화면에 보이는 주소를 그대로 복사**해 주세요. 이 안내문에 적힌 예시를 붙여넣으면 연결되지 않습니다.
 
 ## 4단계 — 연결 확인
 

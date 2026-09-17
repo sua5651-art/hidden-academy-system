@@ -2327,7 +2327,7 @@
     var sh = s.sheets || { url: '', secret: '', autoSend: true };
     var queued = Store.getSheetQueue().length;
     html += '<div class="card"><h3 class="card__title">구글 시트 연결 <small>선택 사항</small></h3>';
-    html += field('웹 앱 주소', '<input type="text" id="shUrl" value="' + esc(sh.url) + '" placeholder="https://script.google.com/macros/s/.../exec">', false,
+    html += field('웹 앱 주소', '<input type="text" id="shUrl" value="' + esc(sh.url) + '" placeholder="복사한 주소 붙여넣기 (끝이 /exec)">', false,
       'Apps Script 에서 배포하고 받은 주소입니다. /exec 로 끝납니다.');
     html += field('비밀번호', '<input type="password" id="shSecret" value="' + esc(sh.secret) + '" autocomplete="off" placeholder="Apps Script 의 SECRET 과 같은 값">', false);
     html += '<label class="check-label check-label--help" style="margin-bottom:14px">' +
