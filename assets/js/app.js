@@ -134,6 +134,30 @@
     html += '<a class="btn" href="#/counsel/new">💬 상담 기록</a>';
     html += '</div>';
 
+    // 시험 대비 — 다가오는 시험과 남은 기간 (기능 3)
+    var exams = Store.getExams({ upcoming: true });
+    html += '<div class="card" style="margin-top:14px"><h3 class="card__title">📝 시험 대비' +
+            '<a href="#/exams" style="float:right;font-size:12.5px;font-weight:600">전체 보기</a></h3>';
+    if (!exams.length) {
+      html += '<div class="list__meta" style="margin-bottom:12px">등록된 시험 정보가 없습니다.</div>';
+      html += '<a class="btn btn--sm btn--block" href="#/exam/new">＋ 학교 시험 정보 등록</a>';
+    } else {
+      html += exams.slice(0, 3).map(function (ex) {
+        var studs = Store.getExamStudents(ex.id);
+        var ready = studs.filter(function (st) {
+          return Store.prepProgress(ex, Store.getPrep(ex.id, st.id)).ready;
+        }).length;
+        return '<a class="list__item" href="#/exam/' + esc(ex.id) + '" style="margin-bottom:8px">' +
+          '<div class="list__row"><span class="list__name">' + esc(ex.school) + ' ' + esc(ex.grade) + ' ' + esc(ex.term) + '</span>' +
+            ddayBadge(ex) + '</div>' +
+          '<div class="list__meta">' + esc(FeedbackEngine.formatDate(ex.examDate)) +
+            ' · 준비 완료 ' + ready + '/' + studs.length + '명</div>' +
+        '</a>';
+      }).join('');
+      html += '<a class="btn btn--sm btn--ghost btn--block" href="#/exam/new">＋ 시험 정보 등록</a>';
+    }
+    html += '</div>';
+
     // 다음 확인일이 다가온 상담 (기능 5)
     var due = Store.getUpcomingChecks(3);
     if (due.length) {
@@ -274,7 +298,21 @@
       html += '<a class="btn btn--ghost btn--sm" href="#/lessons">📋 수업 ' + lesCount + '건</a>';
       html += '<a class="btn btn--ghost btn--sm" href="#/homeworks">📚 숙제 ' + hwCount + '건</a>';
       html += '<a class="btn btn--ghost btn--sm" href="#/counsels?student=' + esc(id) + '">💬 상담 ' + cnsCount + '건</a>';
-      html += '</div><div class="btn-row" style="margin-top:8px">';
+      html += '</div>';
+      // 이 학생 학교·학년에 맞는 시험 (기능 1 — 자동 연결 결과를 학생 쪽에서도 보여 준다)
+      var myExams = Store.getExams({ upcoming: true }).filter(function (ex) {
+        if (String(s.school || '').trim() !== ex.school) return false;
+        if (ex.grade && String(s.grade || '').trim() !== ex.grade) return false;
+        return true;
+      });
+      if (myExams.length) {
+        html += '<div class="btn-row" style="margin-top:8px">' + myExams.slice(0, 2).map(function (ex) {
+          var d = Store.examDday(ex);
+          return '<a class="btn btn--ghost btn--sm" href="#/prep/' + esc(ex.id) + '/' + esc(id) + '">📝 ' +
+            esc(ex.term) + ' (' + esc(ExamEngine.ddayLabel(d)) + ')</a>';
+        }).join('') + '</div>';
+      }
+      html += '<div class="btn-row" style="margin-top:8px">';
       html += '<a class="btn btn--sm" href="#/counsel/new?student=' + esc(id) + '">＋ 상담 기록 작성</a>';
       html += '</div></div>';
 
@@ -1447,6 +1485,371 @@
     });
   }
 
+  // ───────────────────────── 내신 관리 ─────────────────────────
+
+  /** 남은 기간 배지 (기능 3) */
+  function ddayBadge(exam) {
+    var d = Store.examDday(exam);
+    if (d == null) return '';
+    if (d < 0) return '<span class="badge">종료</span>';
+    if (d === 0) return '<span class="badge badge--archived">오늘 시험</span>';
+    if (d <= 7) return '<span class="badge badge--archived">D-' + d + '</span>';
+    if (d <= 14) return '<span class="badge badge--edited">D-' + d + '</span>';
+    return '<span class="badge badge--generated">D-' + d + '</span>';
+  }
+
+  // ── 시험 목록 ──
+  function renderExams() {
+    setHeader('내신 관리', '', false);
+    var list = Store.getExams();
+    var html = '';
+
+    html += '<a class="btn btn--block" href="#/exam/new">＋ 학교 시험 정보 등록</a>';
+    html += '<div class="note note--info" style="margin-top:14px">학교·학년별로 <b>한 번만 등록</b>하면 그 학교 학생들에게 자동으로 연결됩니다.</div>';
+
+    if (!list.length) {
+      html += '<div class="empty"><span class="empty__icon">📝</span>등록된 시험 정보가 없습니다.</div>';
+    } else {
+      html += '<h2 class="section-title">등록된 시험</h2><ul class="list">' + list.map(function (e) {
+        var students = Store.getExamStudents(e.id);
+        var ready = students.filter(function (st) {
+          return Store.prepProgress(e, Store.getPrep(e.id, st.id)).ready;
+        }).length;
+        var meta = [e.school, e.grade, e.textbook].filter(Boolean).join(' · ');
+        return '<a class="list__item" href="#/exam/' + esc(e.id) + '">' +
+          '<div class="list__row"><span class="list__name">' + esc(e.term) + '</span>' + ddayBadge(e) + '</div>' +
+          '<div class="list__meta">' + esc(meta) + '</div>' +
+          '<div class="list__meta">' + esc(FeedbackEngine.formatDate(e.examDate)) +
+            ' · 연결 학생 ' + students.length + '명' + (students.length ? ' (준비 완료 ' + ready + '명)' : '') + '</div>' +
+        '</a>';
+      }).join('') + '</ul>';
+    }
+    view.innerHTML = html;
+  }
+
+  // ── 학교 공통 시험 정보 입력 ──
+  function renderExamForm(id) {
+    var isNew = !id;
+    var e = isNew ? null : Store.getExam(id);
+    if (!isNew && !e) { toast('시험 정보를 찾을 수 없습니다.', 'err'); return go('#/exams'); }
+    setHeader(isNew ? '학교 시험 정보 등록' : '시험 정보 수정', '', true);
+
+    var allStudents = Store.getStudents();
+    var schools = {}, grades = {};
+    allStudents.forEach(function (st) {
+      if (st.school) schools[st.school] = true;
+      if (st.grade) grades[st.grade] = true;
+    });
+
+    var units = (e && e.units) || [];
+    var grammar = (e && e.grammarPoints) || [];
+
+    var html = '<form id="examForm"><div class="card"><h3 class="card__title">학교 공통 정보 <small>이 학교 학생 모두에게 적용</small></h3>';
+    html += '<div class="filters">';
+    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">학교명<span class="req">*</span></label>' +
+            '<input type="text" name="school" id="exSchool" value="' + esc(e ? e.school : '') + '" list="schoolList" required placeholder="예: 정왕중">' +
+            '<datalist id="schoolList">' + Object.keys(schools).map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist></div>';
+    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">학년</label>' +
+            '<input type="text" name="grade" id="exGrade" value="' + esc(e ? e.grade : '') + '" list="gradeList" placeholder="비우면 학교 전체">' +
+            '<datalist id="gradeList">' + Object.keys(grades).map(function (x) { return '<option value="' + esc(x) + '">'; }).join('') + '</datalist></div>';
+    html += '</div>';
+    html += '<div class="note note--info" id="matchNote" style="margin-bottom:14px"></div>';
+
+    html += field('시험 이름', '<input type="text" name="term" value="' + esc(e ? e.term : '') + '" required placeholder="예: 2학기 중간고사">', true);
+    html += field('교과서 / 출판사', '<input type="text" name="textbook" value="' + esc(e ? e.textbook : '') + '" placeholder="예: 천재(이재영)">');
+    html += field('시험일', '<input type="date" name="examDate" value="' + esc(e ? e.examDate : '') + '" required>', true);
+    html += '</div>';
+
+    // 시험범위 = 단원 목록
+    html += '<div class="card"><h3 class="card__title">시험범위 (단원) <small>학생별 준비 상태의 기준이 됩니다</small></h3>';
+    html += '<div id="unitList">' + (units.length ? units.map(function (u) { return hwEditRow('unit', { id: u.id, text: u.name }); }).join('') : hwEditRow('unit', {})) + '</div>';
+    html += '<div class="btn-row" style="margin-top:8px"><button type="button" class="btn btn--ghost btn--sm" id="addUnit">＋ 단원 추가</button></div>';
+    html += field('시험범위 참고 메모', '<textarea name="rangeNote" placeholder="예: 교과서 본문 + 워크북 문제, 부교재 3~4과">' + esc(e ? e.rangeNote : '') + '</textarea>');
+    html += '</div>';
+
+    // 문법 범위
+    html += '<div class="card"><h3 class="card__title">문법 범위 <small>학생별 취약 문법 선택지가 됩니다</small></h3>';
+    html += '<div id="grammarList">' + (grammar.length ? grammar.map(function (g) { return hwEditRow('grammar', { id: g.id, text: g.name }); }).join('') : hwEditRow('grammar', {})) + '</div>';
+    html += '<div class="btn-row" style="margin-top:8px"><button type="button" class="btn btn--ghost btn--sm" id="addGrammar">＋ 문법 추가</button></div>';
+    html += '</div>';
+
+    html += '<div class="card"><h3 class="card__title">수행평가 · 서술형</h3>';
+    html += field('안내 내용', '<textarea name="performance" placeholder="예: 서술형 30% · 본문 요약 쓰기 수행평가 10월 8일">' + esc(e ? e.performance : '') + '</textarea>');
+    html += '</div>';
+
+    html += '<div class="btn-row"><button type="submit" class="btn btn--block">' + (isNew ? '등록하기' : '수정 내용 저장') + '</button></div>';
+    html += '</form>';
+
+    if (!isNew) {
+      html += '<button class="btn btn--ghost btn--block" id="exArchiveBtn" style="margin-top:12px">' +
+              (e.archived ? '보관 해제하기' : '이 시험 정보 보관하기') + '</button>';
+    }
+    view.innerHTML = html;
+
+    bindEditList('#unitList', '#addUnit', 'unit');
+    bindEditList('#grammarList', '#addGrammar', 'grammar');
+
+    /** 지금 조건에 몇 명이 걸리는지 바로 보여 준다 (연결이 맞는지 확인용) */
+    function refreshMatch() {
+      var school = $('#exSchool').value.trim();
+      var grade = $('#exGrade').value.trim();
+      var n = school ? allStudents.filter(function (st) {
+        if (String(st.school || '').trim() !== school) return false;
+        if (grade && String(st.grade || '').trim() !== grade) return false;
+        return true;
+      }).length : 0;
+      var box = $('#matchNote');
+      if (!school) { box.textContent = '학교명을 입력하면 연결될 학생 수를 알려 드립니다.'; box.className = 'note note--info'; return; }
+      if (n === 0) {
+        box.innerHTML = '이 조건에 맞는 학생이 <b>없습니다.</b> 학생 화면의 학교·학년 표기와 같은지 확인해 주세요.';
+        box.className = 'note note--warn';
+      } else {
+        box.innerHTML = '이 조건에 맞는 학생 <b>' + n + '명</b>이 자동으로 연결됩니다.';
+        box.className = 'note note--ok';
+      }
+    }
+    $('#exSchool').addEventListener('input', refreshMatch);
+    $('#exGrade').addEventListener('input', refreshMatch);
+    refreshMatch();
+
+    $('#examForm').addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var fd = new FormData(ev.target);
+      var r = Store.saveExam({
+        id: isNew ? null : id,
+        school: fd.get('school'), grade: fd.get('grade'), term: fd.get('term'),
+        textbook: fd.get('textbook'), examDate: fd.get('examDate'),
+        units: readEditRows('#unitList').map(function (x) { return { id: x.id, name: x.text }; }),
+        rangeNote: fd.get('rangeNote'),
+        grammarPoints: readEditRows('#grammarList').map(function (x) { return { id: x.id, name: x.text }; }),
+        performance: fd.get('performance')
+      });
+      if (!r.ok) return toast(r.error, 'err');
+      toast('저장했습니다.', 'ok');
+      go('#/exam/' + r.id);
+    });
+
+    var ab = $('#exArchiveBtn');
+    if (ab) ab.addEventListener('click', function () {
+      confirmBox(e.archived ? '이 시험 정보를 다시 표시할까요?' : '이 시험 정보를 보관할까요?\n학생 준비 기록은 삭제되지 않습니다.',
+                 e.archived ? '보관 해제' : '보관하기').then(function (ok) {
+        if (!ok) return;
+        var r = Store.setExamArchived(id, !e.archived);
+        if (!r.ok) return toast(r.error, 'err');
+        go('#/exams');
+      });
+    });
+  }
+
+  // ── 시험 상세 : 공통 정보 + 연결된 학생 진행률 ──
+  function renderExamDetail(id) {
+    var e = Store.getExam(id);
+    if (!e) { toast('시험 정보를 찾을 수 없습니다.', 'err'); return go('#/exams'); }
+    var students = Store.getExamStudents(id);
+    var dday = Store.examDday(e);
+    setHeader(e.term, [e.school, e.grade].filter(Boolean).join(' '), true);
+
+    var html = '';
+
+    html += '<div class="card"><h3 class="card__title">시험 정보 ' + ddayBadge(e) + '</h3><dl class="kv">';
+    html += '<dt>학교 · 학년</dt><dd>' + esc([e.school, e.grade].filter(Boolean).join(' ')) + '</dd>';
+    html += '<dt>교과서</dt><dd>' + esc(e.textbook || '-') + '</dd>';
+    html += '<dt>시험일</dt><dd>' + esc(FeedbackEngine.formatDate(e.examDate)) + ' · <b>' + esc(ExamEngine.ddayLabel(dday)) + '</b></dd>';
+    html += '<dt>시험범위</dt><dd>' + (e.units.length ? esc(e.units.map(function (u) { return u.name; }).join(', ')) : '입력 없음') + '</dd>';
+    if (e.rangeNote) html += '<dt>범위 메모</dt><dd>' + esc(e.rangeNote) + '</dd>';
+    html += '<dt>문법 범위</dt><dd>' + (e.grammarPoints.length ? esc(e.grammarPoints.map(function (g) { return g.name; }).join(', ')) : '입력 없음') + '</dd>';
+    if (e.performance) html += '<dt>수행 · 서술형</dt><dd>' + esc(e.performance) + '</dd>';
+    html += '</dl>';
+    html += '<div class="btn-row" style="margin-top:12px"><a class="btn btn--ghost btn--sm" href="#/exam/' + esc(id) + '/edit">시험 정보 수정</a></div>';
+    html += '</div>';
+
+    html += '<h2 class="section-title">연결된 학생 ' + students.length + '명</h2>';
+    if (!students.length) {
+      html += '<div class="note note--warn">이 학교·학년에 해당하는 학생이 없습니다.<br>' +
+              '학생 화면에서 학교·학년 표기가 <b>' + esc(e.school) + (e.grade ? ' / ' + esc(e.grade) : '') + '</b> 와 같은지 확인해 주세요.</div>';
+    } else if (!e.units.length) {
+      html += '<div class="note note--warn">시험범위(단원)를 먼저 등록해야 학생별 준비 상태를 체크할 수 있습니다.</div>';
+    } else {
+      html += '<ul class="list">' + students.map(function (st) {
+        var prep = Store.getPrep(id, st.id);
+        var pg = Store.prepProgress(e, prep);
+        var flags = '';
+        if (pg.ready) flags += '<span class="badge badge--final">준비 완료</span>';
+        else flags += '<span class="badge badge--edited">남은 항목 ' + pg.remain + '</span>';
+        if (pg.weakGrammarCount) flags += ' <span class="badge badge--archived">취약 문법 ' + pg.weakGrammarCount + '</span>';
+        if (pg.needsExtra) flags += ' <span class="badge badge--archived">보강 필요</span>';
+        return '<a class="list__item" href="#/prep/' + esc(id) + '/' + esc(st.id) + '">' +
+          '<div class="list__row"><span class="list__name">' + esc(st.name) + '</span>' +
+            (prep.targetScore ? '<span class="badge">목표 ' + esc(prep.targetScore) + '점</span>' : '') + '</div>' +
+          '<div class="progress"><div class="progress__bar" style="width:' + pg.percent + '%"></div></div>' +
+          '<div class="list__meta">준비 ' + pg.done + '/' + pg.total + ' (' + pg.percent + '%)' +
+            (pg.wrongCount ? ' · 오답 ' + pg.wrongCount + '문항' : '') + '</div>' +
+          '<div style="margin-top:6px">' + flags + '</div>' +
+        '</a>';
+      }).join('') + '</ul>';
+    }
+    view.innerHTML = html;
+  }
+
+  // ── 학생별 준비 상태 체크 + 체크리스트 ──
+  function statePicker(kind, unitId, cur) {
+    return '<div class="seg" data-kind="' + kind + '" data-unit="' + esc(unitId) + '">' +
+      Store.PREP_STATES.map(function (st) {
+        return '<button type="button" class="seg__btn" data-state="' + st.code + '" aria-pressed="' +
+          ((cur || 'todo') === st.code ? 'true' : 'false') + '">' + esc(st.label) + '</button>';
+      }).join('') + '</div>';
+  }
+
+  function renderPrep(examId, studentId) {
+    var e = Store.getExam(examId);
+    var st = Store.getStudent(studentId);
+    if (!e || !st) { toast('기록을 찾을 수 없습니다.', 'err'); return go('#/exams'); }
+    var prep = Store.getPrep(examId, studentId);
+    var settings = Store.getSettings();
+    var pg = Store.prepProgress(e, prep);
+    var dday = Store.examDday(e);
+    setHeader(st.name + ' 시험 준비', e.term, true);
+
+    var html = '';
+
+    html += '<div class="card"><h3 class="card__title">' + esc(e.school) + ' ' + esc(e.grade) + ' ' + esc(e.term) + ' ' + ddayBadge(e) + '</h3>';
+    html += '<div class="list__meta">' + esc(FeedbackEngine.formatDate(e.examDate)) + ' · <b>' + esc(ExamEngine.ddayLabel(dday)) + '</b>' +
+            (e.textbook ? ' · ' + esc(e.textbook) : '') + '</div>';
+    html += '<div class="progress"><div class="progress__bar" id="prepBar" style="width:' + pg.percent + '%"></div></div>';
+    html += '<div class="list__meta" id="prepText">준비 ' + pg.done + '/' + pg.total + ' 완료 (' + pg.percent + '%)</div>';
+    html += '</div>';
+
+    html += '<form id="prepForm">';
+
+    html += '<div class="card">';
+    html += field('목표 점수', '<input type="number" name="targetScore" min="0" max="100" value="' + esc(prep.targetScore) + '" placeholder="예: 95">');
+    html += '</div>';
+
+    // 단원별 준비 상태 + 본문 암기 상태
+    html += '<div class="card"><h3 class="card__title">단원별 준비 · 본문 암기</h3>';
+    if (!e.units.length) {
+      html += '<div class="note note--warn">시험 정보에 단원이 등록되어 있지 않습니다.</div>';
+    } else {
+      html += e.units.map(function (u) {
+        var us = (prep.units || {})[u.id] || 'todo';
+        var ms = (prep.memorize || {})[u.id] || 'todo';
+        var incomplete = us !== 'done' || ms !== 'done';
+        return '<div class="unit-row' + (incomplete ? ' unit-row--pending' : '') + '">' +
+          '<div class="unit-row__name">' + esc(u.name) +
+            (incomplete ? '<span class="badge badge--edited" style="margin-left:6px">미완료</span>' : '<span class="badge badge--final" style="margin-left:6px">완료</span>') + '</div>' +
+          '<div class="unit-row__line"><span class="unit-row__label">단원 준비</span>' + statePicker('units', u.id, us) + '</div>' +
+          '<div class="unit-row__line"><span class="unit-row__label">본문 암기</span>' + statePicker('memorize', u.id, ms) + '</div>' +
+        '</div>';
+      }).join('');
+    }
+    html += '</div>';
+
+    // 취약 문법
+    html += '<div class="card"><h3 class="card__title">취약 문법</h3>';
+    if (e.grammarPoints.length) {
+      html += '<div class="chip-row" style="margin-bottom:12px">' + e.grammarPoints.map(function (g) {
+        var on = (prep.weakGrammar || []).indexOf(g.id) !== -1;
+        return '<button type="button" class="btn btn--sm ' + (on ? '' : 'btn--ghost') + ' grammar-chip" data-id="' + esc(g.id) + '" aria-pressed="' + on + '">' + esc(g.name) + '</button>';
+      }).join('') + '</div>';
+    } else {
+      html += '<div class="list__meta" style="margin-bottom:12px">시험 정보에 문법 범위가 등록되어 있지 않습니다.</div>';
+    }
+    html += field('그 밖에 약한 부분', '<textarea name="weakGrammarNote" placeholder="예: 관계대명사 what 용법">' + esc(prep.weakGrammarNote) + '</textarea>');
+    html += '</div>';
+
+    html += '<div class="card"><h3 class="card__title">오답 · 보강</h3>';
+    html += field('오답 수', '<input type="number" name="wrongCount" min="0" value="' + esc(prep.wrongCount || 0) + '">', false, '시험 대비 문제집에서 틀린 문항 수');
+    html += '<label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:14px;font-weight:600">' +
+            '<input type="checkbox" name="needsExtra" id="needsExtra" style="width:auto"' + (prep.needsExtra ? ' checked' : '') + '> 보강이 필요합니다</label>';
+    html += '<div id="extraBox"' + (prep.needsExtra ? '' : ' hidden') + '>';
+    html += field('보강 내용', '<textarea name="extraNote" placeholder="예: 주말 보강 1회 — 관계대명사 집중">' + esc(prep.extraNote) + '</textarea>');
+    html += '</div></div>';
+
+    html += '<div class="btn-row"><button type="submit" class="btn btn--block">준비 상태 저장</button></div>';
+    html += '</form>';
+
+    // 체크리스트 (기능 5)
+    html += '<h2 class="section-title">시험 전 최종 체크리스트</h2>';
+    html += '<div id="prepWarnArea"></div>';
+    html += '<div class="fb-preview" id="checklistBox">' + esc((prep.checklist && prep.checklist.text) || '아래 버튼을 눌러 체크리스트를 만들어 주세요.') + '</div>';
+    html += '<div class="btn-row" style="margin-top:12px">';
+    html += '<button class="btn" id="checklistBtn">📋 체크리스트 만들기</button>';
+    html += '<button class="btn btn--ghost" id="checklistCopyBtn">복사</button>';
+    html += '</div>';
+    html += '<label style="display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:var(--text-dim)">' +
+            '<input type="checkbox" id="includeDone" style="width:auto"> 이미 끝낸 항목도 함께 넣기</label>';
+
+    view.innerHTML = html;
+    bindAutoGrow(view);
+
+    // 3단계 선택 버튼
+    $$('.seg').forEach(function (seg) {
+      seg.addEventListener('click', function (ev) {
+        var btn = ev.target.closest('.seg__btn');
+        if (!btn) return;
+        $$('.seg__btn', seg).forEach(function (b) { b.setAttribute('aria-pressed', 'false'); });
+        btn.setAttribute('aria-pressed', 'true');
+      });
+    });
+
+    $$('.grammar-chip').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        var on = chip.getAttribute('aria-pressed') === 'true';
+        chip.setAttribute('aria-pressed', String(!on));
+        chip.classList.toggle('btn--ghost', on);
+      });
+    });
+
+    $('#needsExtra').addEventListener('change', function (ev) { $('#extraBox').hidden = !ev.target.checked; });
+
+    function collect() {
+      var fd = new FormData($('#prepForm'));
+      var units = {}, memorize = {};
+      $$('.seg').forEach(function (seg) {
+        var on = seg.querySelector('.seg__btn[aria-pressed="true"]');
+        var code = on ? on.dataset.state : 'todo';
+        (seg.dataset.kind === 'units' ? units : memorize)[seg.dataset.unit] = code;
+      });
+      return {
+        examId: examId, studentId: studentId,
+        targetScore: fd.get('targetScore'),
+        units: units, memorize: memorize,
+        weakGrammar: $$('.grammar-chip').filter(function (c) { return c.getAttribute('aria-pressed') === 'true'; })
+          .map(function (c) { return c.dataset.id; }),
+        weakGrammarNote: fd.get('weakGrammarNote'),
+        wrongCount: fd.get('wrongCount'),
+        needsExtra: !!fd.get('needsExtra'),
+        extraNote: fd.get('extraNote')
+      };
+    }
+
+    $('#prepForm').addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var r = Store.savePrep(collect());
+      if (!r.ok) return toast(r.error, 'err');
+      toast('준비 상태를 저장했습니다.', 'ok');
+      renderPrep(examId, studentId);
+    });
+
+    $('#checklistBtn').addEventListener('click', function () {
+      var r = Store.savePrep(collect());       // 화면에서 바꾼 내용을 먼저 반영한다
+      if (!r.ok) return toast(r.error, 'err');
+      var latest = Store.getPrep(examId, studentId);
+      var text = ExamEngine.buildChecklist(e, latest, settings, { includeDone: $('#includeDone').checked });
+      $('#checklistBox').textContent = text;
+      renderWarningsInto('#prepWarnArea', ExamEngine.verifyChecklist(text, e, latest));
+      Store.savePrepChecklist(examId, studentId, text);
+      toast('체크리스트를 만들었습니다.', 'ok');
+    });
+
+    $('#checklistCopyBtn').addEventListener('click', function () {
+      var text = $('#checklistBox').textContent;
+      if (!text.trim() || text.indexOf('버튼을 눌러') !== -1) return toast('먼저 체크리스트를 만들어 주세요.', 'err');
+      copyText(text).then(function () { toast('복사했습니다.', 'ok'); })
+                    .catch(function () { toast('복사에 실패했습니다.', 'err'); });
+    });
+  }
+
   // ───────────────────────── 설정 ─────────────────────────
 
   function renderSettings() {
@@ -1626,6 +2029,17 @@
         case 'feedback':
           if (!p[1]) return go('#/lessons');
           renderFeedback(p[1]); setTab('lessons'); break;
+        case 'exams': renderExams(); setTab('students'); break;
+        case 'exam':
+          if (p[1] === 'new') renderExamForm(null);
+          else if (p[2] === 'edit') renderExamForm(p[1]);
+          else if (p[1]) renderExamDetail(p[1]);
+          else return go('#/exams');
+          setTab('students'); break;
+        case 'prep':
+          if (p[1] && p[2]) renderPrep(p[1], p[2]);
+          else return go('#/exams');
+          setTab('students'); break;
         case 'counsels':
           cnsFilter.studentId = routeQuery('student') || cnsFilter.studentId;
           renderCounsels(); setTab('students'); break;

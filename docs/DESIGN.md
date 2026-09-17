@@ -163,7 +163,35 @@
 작성 · 수정 이력 (언제 무엇을 고쳤는지)
 ```
 
-### 화면 ⑦ 설정
+### 화면 ⑦ 내신 관리 (탭 없음 — 홈 시험 대비 카드 / 학생 화면에서 진입)
+
+**시험 목록** (`#/exams`) — 시험일이 가까운 순. 각 줄에 D-day와 `준비 완료 N/M명`
+**시험 정보 입력** (`#/exam/new`, `#/exam/:id/edit`) — 학교 공통 정보만 다룸
+- 학교·학년을 입력하는 동안 **연결될 학생 수**를 실시간으로 안내
+- 단원과 문법은 줄 단위로 추가/삭제
+
+**시험 상세** (`#/exam/:id`) — 공통 정보 + 연결된 학생 목록(진행률 막대·배지)
+**학생별 준비** (`#/prep/:examId/:studentId`)
+```
+시험 정보 (D-day · 진행률)
+    │
+    ▼
+목표 점수
+    │
+    ▼
+단원별  [단원 준비] [본문 암기]  각각 시작 전/진행중/완료
+    │   └ 미완료 단원은 왼쪽 노란 띠로 강조
+    ▼
+취약 문법 (시험 문법 범위에서 선택) + 직접 입력
+    │
+    ▼
+오답 수 · 보강 필요 여부
+    │
+    ▼
+📋 시험 전 최종 체크리스트 — 남은 것만 뽑아 냄
+```
+
+### 화면 ⑧ 설정
 
 - 교사 이름 목록 관리
 - 문장 톤(말투) 선택: `간결` / `기본` / `따뜻함`
@@ -199,7 +227,9 @@
   "students": [ /* 학생 객체 */ ],
   "lessons":  [ /* 수업 기록 객체 */ ],
   "homeworks": [ /* 숙제 기록 객체 */ ],
-  "counsels": [ /* 상담 기록 객체 */ ]
+  "counsels": [ /* 상담 기록 객체 */ ],
+  "exams":    [ /* 학교 공통 시험 정보 */ ],
+  "preps":    [ /* 학생별 준비 기록 */ ]
 }
 ```
 
@@ -348,7 +378,72 @@
 `nextCheckDate <= 오늘+3일` 이면서 후속조치를 아직 끝내지 않은 건만.
 지난 건은 `overdue: true`, 남은 날짜는 `dday` 로 함께 돌려줍니다.
 
-### 3-4. 수업 기록 (lesson) — 핵심 데이터
+### 3-4. 내신 — 학교 공통 정보와 학생별 기록을 분리
+
+```jsonc
+// ① 학교 공통 (exam) — 학교·학년마다 한 번만 등록
+{
+  "id": "exm_9a3d7c",
+  "school": "정왕중",
+  "grade": "중3",                  // 비우면 그 학교 전체
+  "term": "2학기 중간고사",
+  "textbook": "천재(이재영)",       // 교과서/출판사
+  "examDate": "2026-10-15",
+  "units": [                       // 시험범위 = 단원 목록
+    { "id": "unt_a1", "name": "Lesson 5" },
+    { "id": "unt_a2", "name": "Lesson 6" }
+  ],
+  "rangeNote": "교과서 본문 + 워크북, 부교재 3~4과",
+  "grammarPoints": [               // 문법 범위
+    { "id": "grm_b1", "name": "관계대명사 which/that" },
+    { "id": "grm_b2", "name": "수동태" }
+  ],
+  "performance": "서술형 30% · 본문 요약 쓰기 수행평가",
+  "archived": false, "createdAt": "...", "updatedAt": "..."
+}
+
+// ② 학생별 (prep) — exam 을 '가리키기만' 한다
+{
+  "id": "prp_1f2e3d",
+  "examId": "exm_9a3d7c",          // ← 학교 공통 정보 참조
+  "studentId": "stu_l8f2k1",
+  "studentName": "김민준",
+  "targetScore": "95",             // 목표점수
+  "units":    { "unt_a1": "done", "unt_a2": "doing" },  // 단원별 준비 상태
+  "memorize": { "unt_a1": "done", "unt_a2": "todo"  },  // 본문 암기 상태
+  "weakGrammar": ["grm_b1"],       // 취약 문법 (문법 범위 중 선택)
+  "weakGrammarNote": "관계대명사 what 용법",
+  "wrongCount": 12,                // 오답 수
+  "needsExtra": true,              // 보강 필요 여부
+  "extraNote": "주말 보강 1회 — 관계대명사 집중",
+  "checklist": { "text": "...", "generatedAt": "..." },
+  "createdAt": "...", "updatedAt": "..."
+}
+```
+
+**왜 나누는가**
+
+| 동작 | `exam` | `prep` |
+|---|---|---|
+| 시험일이 미뤄짐 | 한 줄 고침 | **안 바뀜** (전원에게 자동 반영) |
+| 학생 한 명 체크 변경 | **안 바뀜** | 그 학생만 바뀜 |
+| 시험범위에서 단원 삭제 | 바뀜 | 그 단원 체크만 자동 정리 |
+
+**자동 연결** (`Store.getExamStudents`)
+
+`student.school === exam.school` 이고, `exam.grade` 가 있으면 `student.grade` 도 같은
+학생을 그때그때 계산합니다. 미리 복사해 두지 않으므로 **학생을 나중에 등록해도 바로 연결**됩니다.
+
+**진행률 계산** (`Store.prepProgress`)
+
+| 값 | 뜻 |
+|---|---|
+| `total` | 단원 수 × 2 (단원 준비 + 본문 암기) |
+| `done` / `percent` | 완료 수 / 백분율 |
+| `pending` | 미완료 목록 `{unit, kind, state}` — 체크리스트와 강조 표시에 함께 씀 |
+| `ready` | 전부 완료 + 취약 문법 없음 + 보강 불필요 |
+
+### 3-5. 수업 기록 (lesson) — 핵심 데이터
 
 ```jsonc
 {
@@ -539,6 +634,7 @@ hidden-academy-system/
 │       ├── feedback.js     피드백 문장 생성 + 사실 검증
 │       ├── homework.js     숙제 안내 문장 생성
 │       ├── counsel.js      상담 요약 (발췌 3~5줄)
+│       ├── exam.js         내신 체크리스트 생성
 │       ├── ai.js           Claude API 연결 (선택)
 │       └── app.js          화면 동작 전체
 ├── docs/DESIGN.md          이 문서

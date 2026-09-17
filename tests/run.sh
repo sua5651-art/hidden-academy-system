@@ -19,6 +19,10 @@ echo "▶ 상담 로직 테스트 (원문/요약 분리·후속조치·확인일
 node tests/counsel.test.js || FAIL=1
 
 echo ""
+echo "▶ 내신 로직 테스트 (학교공통/학생별 분리·자동연결·D-day·체크리스트)"
+node tests/exam.test.js || FAIL=1
+
+echo ""
 echo "▶ 고정 문구 오탐 검사 (앱이 넣는 문구가 경고로 잡히지 않는지)"
 node tests/fixed-phrases.test.js || FAIL=1
 
@@ -41,6 +45,9 @@ if node -e "try{require('playwright')}catch(e){try{require('/opt/node22/lib/node
   echo ""
   echo "▶ 상담 화면 테스트 (작성 → 요약 → 후속조치 → 수정이력 → 대시보드)"
   node tests/counsel-ui.test.js || FAIL=1
+  echo ""
+  echo "▶ 내신 화면 테스트 (시험등록 → 자동연결 → 준비체크 → 체크리스트)"
+  node tests/exam-ui.test.js || FAIL=1
   kill $SRV $MOCK 2>/dev/null
 else
   echo ""

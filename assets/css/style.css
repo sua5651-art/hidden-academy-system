@@ -286,3 +286,29 @@ select { background-image: linear-gradient(45deg, transparent 50%, var(--text-di
   overflow: hidden; margin: 10px 0 4px;
 }
 .progress__bar { height: 100%; background: var(--ok); border-radius: 999px; transition: width .2s; }
+
+/* ── 내신 준비 상태 ────────────────────────────── */
+.unit-row {
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.unit-row:last-child { border-bottom: 0; }
+.unit-row--pending { border-left: 3px solid var(--warn); padding-left: 11px; margin-left: -14px; }
+.unit-row__name { font-weight: 700; font-size: 14.5px; margin-bottom: 9px; }
+.unit-row__line { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+.unit-row__label {
+  flex: 0 0 62px; font-size: 12.5px; color: var(--text-dim); font-weight: 600;
+}
+
+/* 3단계 선택 (시작 전 / 진행중 / 완료) */
+.seg {
+  display: flex; flex: 1; gap: 0;
+  border: 1px solid var(--border); border-radius: 9px; overflow: hidden;
+}
+.seg__btn {
+  flex: 1; padding: 8px 2px; font: inherit; font-size: 12.5px; font-weight: 600;
+  background: var(--surface); color: var(--text-dim);
+  border: 0; border-right: 1px solid var(--border); cursor: pointer; white-space: nowrap;
+}
+.seg__btn:last-child { border-right: 0; }
+.seg__btn[aria-pressed="true"] { background: var(--brand); color: #fff; }
+.seg__btn[data-state="done"][aria-pressed="true"] { background: var(--ok); }

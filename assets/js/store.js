@@ -26,7 +26,9 @@
     students: [],
     lessons: [],
     homeworks: [],
-    counsels: []
+    counsels: [],
+    exams: [],
+    preps: []
   };
 
   /** 이해도 5단계 정의 — 화면 표시와 고정 문장을 한 곳에서 관리 */
@@ -36,6 +38,13 @@
     { code: 'average',    label: '보통',      short: '보통',     order: 3 },
     { code: 'needs_work', label: '보완 필요', short: '보완필요', order: 2 },
     { code: 'weak',       label: '많이 부족', short: '부족',     order: 1 }
+  ];
+
+  /** 단원 준비 · 본문 암기 상태 3단계 */
+  var PREP_STATES = [
+    { code: 'todo',  label: '시작 전', order: 0 },
+    { code: 'doing', label: '진행중',  order: 1 },
+    { code: 'done',  label: '완료',    order: 2 }
   ];
 
   /** 상담 대상 */
@@ -155,6 +164,8 @@
     s.teachers = Array.isArray(s.teachers) ? s.teachers : [];
     s.homeworks = Array.isArray(s.homeworks) ? s.homeworks : [];
     s.counsels = Array.isArray(s.counsels) ? s.counsels : [];
+    s.exams = Array.isArray(s.exams) ? s.exams : [];
+    s.preps = Array.isArray(s.preps) ? s.preps : [];
     s.students.forEach(normalizeStudent);
     return s;
   }
@@ -842,6 +853,256 @@
     return persist();
   }
 
+  // ────────────────────────────── 내신 관리 ──────────────────────────────
+
+  /**
+   * 내신 관리는 두 가지를 완전히 나눠서 보관한다.
+   *
+   *  exam (학교 공통)  — 학교·학년마다 한 번만 등록한다.
+   *                     시험일, 시험범위(단원), 문법 범위, 수행평가 정보처럼
+   *                     그 학교 학생 모두에게 똑같이 적용되는 내용.
+   *
+   *  prep (학생별)     — 학생 한 명의 준비 상태. exam 을 가리키기만 한다.
+   *                     시험 정보가 바뀌어도 학생 기록은 그대로 남고,
+   *                     학생 기록을 고쳐도 학교 공통 정보는 바뀌지 않는다.
+   *
+   * 이렇게 나누면 시험일이 하루 미뤄졌을 때 학교 정보 한 줄만 고치면
+   * 그 학교 학생 전원에게 반영된다.
+   */
+
+  /** 이름 목록을 {id, name} 배열로 정리한다 (단원·문법 범위에 함께 쓴다) */
+  function normalizeNamed(items, prefix) {
+    if (!Array.isArray(items)) return [];
+    return items.map(function (it) {
+      if (typeof it === 'string') return { id: uid(prefix), name: it.trim() };
+      return { id: (it && it.id) || uid(prefix), name: String((it && it.name) || '').trim() };
+    }).filter(function (it) { return it.name; });
+  }
+
+  function getExams(filter) {
+    filter = filter || {};
+    var list = load().exams.slice();
+    if (!filter.includeArchived) list = list.filter(function (e) { return !e.archived; });
+    if (filter.school) list = list.filter(function (e) { return e.school === filter.school; });
+    if (filter.upcoming) {
+      var today = todayStr();
+      list = list.filter(function (e) { return e.examDate && e.examDate >= today; });
+    }
+    // 시험일이 가까운 것부터
+    return list.sort(function (a, b) {
+      if (a.examDate !== b.examDate) return a.examDate < b.examDate ? -1 : 1;
+      return a.createdAt < b.createdAt ? -1 : 1;
+    });
+  }
+
+  function getExam(id) {
+    var found = load().exams.filter(function (e) { return e.id === id; })[0];
+    return found ? clone(found) : null;
+  }
+
+  function saveExam(data) {
+    load();
+    var school = String(data.school || '').trim();
+    if (!school) return { ok: false, error: '학교명을 입력해 주세요.' };
+    if (!String(data.term || '').trim()) return { ok: false, error: '시험 이름을 입력해 주세요. (예: 2학기 중간고사)' };
+    if (!data.examDate) return { ok: false, error: '시험일을 입력해 주세요.' };
+
+    var fields = {
+      school: school,
+      grade: String(data.grade || '').trim(),
+      term: String(data.term || '').trim(),
+      textbook: String(data.textbook || '').trim(),
+      examDate: data.examDate,
+      units: normalizeNamed(data.units, 'unt'),
+      rangeNote: String(data.rangeNote || '').trim(),
+      grammarPoints: normalizeNamed(data.grammarPoints, 'grm'),
+      performance: String(data.performance || '').trim()
+    };
+
+    if (data.id) {
+      var idx = -1;
+      state.exams.forEach(function (e, i) { if (e.id === data.id) idx = i; });
+      if (idx === -1) return { ok: false, error: '해당 시험 정보를 찾을 수 없습니다.' };
+      state.exams[idx] = Object.assign({}, state.exams[idx], fields, { updatedAt: nowISO() });
+      var r = persist();
+      return r.ok ? { ok: true, id: data.id } : r;
+    }
+
+    var record = Object.assign({ id: uid('exm') }, fields, {
+      archived: false, createdAt: nowISO(), updatedAt: nowISO()
+    });
+    state.exams.push(record);
+    var res = persist();
+    return res.ok ? { ok: true, id: record.id } : res;
+  }
+
+  function setExamArchived(id, archived) {
+    load();
+    var e = state.exams.filter(function (x) { return x.id === id; })[0];
+    if (!e) return { ok: false, error: '해당 시험 정보를 찾을 수 없습니다.' };
+    e.archived = !!archived;
+    e.updatedAt = nowISO();
+    return persist();
+  }
+
+  /**
+   * 기능 1 — 학교·학년이 같은 학생을 자동으로 연결한다.
+   * 학생을 새로 등록해도 조건만 맞으면 바로 목록에 나타난다.
+   */
+  function getExamStudents(examId) {
+    var exam = getExam(examId);
+    if (!exam) return [];
+    return load().students.filter(function (st) {
+      if (st.archived) return false;
+      if (String(st.school || '').trim() !== exam.school) return false;
+      if (exam.grade && String(st.grade || '').trim() !== exam.grade) return false;
+      return true;
+    }).map(function (st) { return clone(st); })
+      .sort(function (a, b) { return (a.name || '').localeCompare(b.name || '', 'ko'); });
+  }
+
+  /** 아직 저장된 적 없는 학생도 빈 준비 기록으로 돌려준다 */
+  function emptyPrep(examId, student) {
+    return {
+      id: '', examId: examId,
+      studentId: student ? student.id : '',
+      studentName: student ? student.name : '',
+      targetScore: '',
+      units: {}, memorize: {},
+      weakGrammar: [], weakGrammarNote: '',
+      wrongCount: 0,
+      needsExtra: false, extraNote: '',
+      checklist: { text: '', generatedAt: '' },
+      createdAt: '', updatedAt: ''
+    };
+  }
+
+  function getPrep(examId, studentId) {
+    var found = load().preps.filter(function (p) {
+      return p.examId === examId && p.studentId === studentId;
+    })[0];
+    if (found) return clone(found);
+    var st = getStudent(studentId);
+    return emptyPrep(examId, st);
+  }
+
+  function getPreps(filter) {
+    filter = filter || {};
+    var list = load().preps.slice();
+    if (filter.examId) list = list.filter(function (p) { return p.examId === filter.examId; });
+    if (filter.studentId) list = list.filter(function (p) { return p.studentId === filter.studentId; });
+    return list;
+  }
+
+  /** 학생별 준비 기록 저장 (없으면 이때 처음 만들어진다) */
+  function savePrep(data) {
+    load();
+    var exam = state.exams.filter(function (e) { return e.id === data.examId; })[0];
+    if (!exam) return { ok: false, error: '시험 정보를 찾을 수 없습니다.' };
+    var student = state.students.filter(function (s) { return s.id === data.studentId; })[0];
+    if (!student) return { ok: false, error: '학생을 찾을 수 없습니다.' };
+
+    var score = String(data.targetScore == null ? '' : data.targetScore).trim();
+    if (score !== '' && (isNaN(Number(score)) || Number(score) < 0 || Number(score) > 100)) {
+      return { ok: false, error: '목표 점수는 0~100 사이 숫자로 입력해 주세요.' };
+    }
+    var wrong = Number(data.wrongCount || 0);
+    if (isNaN(wrong) || wrong < 0) return { ok: false, error: '오답 수는 0 이상 숫자로 입력해 주세요.' };
+
+    // 시험에 실제로 있는 단원·문법만 남긴다 (시험 범위가 줄면 자동으로 정리된다)
+    var unitIds = {}; exam.units.forEach(function (u) { unitIds[u.id] = true; });
+    var grammarIds = {}; exam.grammarPoints.forEach(function (g) { grammarIds[g.id] = true; });
+
+    function pickStates(obj) {
+      var out = {};
+      Object.keys(obj || {}).forEach(function (k) {
+        if (!unitIds[k]) return;
+        var v = String(obj[k] || 'todo');
+        out[k] = ['todo', 'doing', 'done'].indexOf(v) === -1 ? 'todo' : v;
+      });
+      return out;
+    }
+
+    var fields = {
+      examId: data.examId,
+      studentId: data.studentId,
+      studentName: student.name,
+      targetScore: score,
+      units: pickStates(data.units),
+      memorize: pickStates(data.memorize),
+      weakGrammar: (Array.isArray(data.weakGrammar) ? data.weakGrammar : []).filter(function (g) { return grammarIds[g]; }),
+      weakGrammarNote: String(data.weakGrammarNote || '').trim(),
+      wrongCount: wrong,
+      needsExtra: !!data.needsExtra,
+      extraNote: String(data.extraNote || '').trim()
+    };
+
+    var idx = -1;
+    state.preps.forEach(function (p, i) {
+      if (p.examId === data.examId && p.studentId === data.studentId) idx = i;
+    });
+    if (idx !== -1) {
+      state.preps[idx] = Object.assign({}, state.preps[idx], fields, { updatedAt: nowISO() });
+      var r = persist();
+      return r.ok ? { ok: true, id: state.preps[idx].id } : r;
+    }
+
+    var record = Object.assign({ id: uid('prp') }, fields, {
+      checklist: { text: '', generatedAt: '' },
+      createdAt: nowISO(), updatedAt: nowISO()
+    });
+    state.preps.push(record);
+    var res = persist();
+    return res.ok ? { ok: true, id: record.id } : res;
+  }
+
+  function savePrepChecklist(examId, studentId, text) {
+    load();
+    var p = state.preps.filter(function (x) { return x.examId === examId && x.studentId === studentId; })[0];
+    if (!p) return { ok: false, error: '먼저 준비 상태를 저장해 주세요.' };
+    p.checklist = { text: String(text || ''), generatedAt: nowISO() };
+    p.updatedAt = nowISO();
+    return persist();
+  }
+
+  /** 시험일까지 남은 날 (기능 3) */
+  function examDday(exam) {
+    if (!exam || !exam.examDate) return null;
+    return diffDays(todayStr(), exam.examDate);
+  }
+
+  /**
+   * 학생 한 명의 준비 진행률 (기능 2·4).
+   * 단원마다 "준비"와 "본문 암기" 두 항목을 센다.
+   */
+  function prepProgress(exam, prep) {
+    var units = (exam && exam.units) || [];
+    var total = units.length * 2;
+    var done = 0, doing = 0;
+    var pending = [];
+
+    units.forEach(function (u) {
+      [['units', '단원 준비'], ['memorize', '본문 암기']].forEach(function (pair) {
+        var st = (prep[pair[0]] || {})[u.id] || 'todo';
+        if (st === 'done') done++;
+        else {
+          if (st === 'doing') doing++;
+          pending.push({ unitId: u.id, unit: u.name, kind: pair[1], state: st });
+        }
+      });
+    });
+
+    return {
+      total: total, done: done, doing: doing, remain: total - done,
+      percent: total ? Math.round(done / total * 100) : 0,
+      pending: pending,
+      weakGrammarCount: (prep.weakGrammar || []).length + (prep.weakGrammarNote ? 1 : 0),
+      wrongCount: Number(prep.wrongCount || 0),
+      needsExtra: !!prep.needsExtra,
+      ready: total > 0 && done === total && !(prep.weakGrammar || []).length && !prep.needsExtra
+    };
+  }
+
   // ────────────────────────────── 통계 ──────────────────────────────
 
   function getStats() {
@@ -850,8 +1111,12 @@
     var active = s.lessons.filter(function (l) { return !l.archived; });
     var hw = s.homeworks.filter(function (h) { return !h.archived; });
     var cns = s.counsels.filter(function (c) { return !c.archived; });
+    var upcomingExams = getExams({ upcoming: true });
     var hwToday = hw.filter(function (h) { return h.date === today; });
     return {
+      examsTotal: s.exams.filter(function (e) { return !e.archived; }).length,
+      examsUpcoming: upcomingExams.length,
+      nextExam: upcomingExams[0] || null,
       counselsTotal: cns.length,
       counselsFollowUp: cns.filter(function (c) { return c.followUp && c.followUp.needed && !c.followUp.done; }).length,
       counselsDueSoon: getUpcomingChecks(3).length,
@@ -887,7 +1152,7 @@
     if (mode === 'replace') {
       state = migrate(mergeDefaults(DEFAULT_STATE, incoming));
       var r0 = persist();
-      return r0.ok ? { ok: true, added: { students: state.students.length, lessons: state.lessons.length, homeworks: state.homeworks.length, counsels: state.counsels.length }, mode: 'replace' } : r0;
+      return r0.ok ? { ok: true, added: { students: state.students.length, lessons: state.lessons.length, homeworks: state.homeworks.length, counsels: state.counsels.length, exams: state.exams.length, preps: state.preps.length }, mode: 'replace' } : r0;
     }
 
     var addedStudents = 0, addedLessons = 0;
@@ -917,12 +1182,23 @@
       if (c && c.id && !cnsIds[c.id]) { state.counsels.push(c); cnsIds[c.id] = true; addedCounsels++; }
     });
 
+    var addedExams = 0, addedPreps = 0;
+    var exmIds = {}; state.exams.forEach(function (e) { exmIds[e.id] = true; });
+    (incoming.exams || []).forEach(function (e) {
+      if (e && e.id && !exmIds[e.id]) { state.exams.push(e); exmIds[e.id] = true; addedExams++; }
+    });
+    var prpKeys = {}; state.preps.forEach(function (p) { prpKeys[p.examId + '|' + p.studentId] = true; });
+    (incoming.preps || []).forEach(function (p) {
+      var k = p && (p.examId + '|' + p.studentId);
+      if (p && p.id && !prpKeys[k]) { state.preps.push(p); prpKeys[k] = true; addedPreps++; }
+    });
+
     (incoming.teachers || []).forEach(function (t) {
       if (t && state.teachers.indexOf(t) === -1) state.teachers.push(t);
     });
 
     var r = persist();
-    return r.ok ? { ok: true, added: { students: addedStudents, lessons: addedLessons, homeworks: addedHomeworks, counsels: addedCounsels }, mode: 'merge' } : r;
+    return r.ok ? { ok: true, added: { students: addedStudents, lessons: addedLessons, homeworks: addedHomeworks, counsels: addedCounsels, exams: addedExams, preps: addedPreps }, mode: 'merge' } : r;
   }
 
   /** 전체 초기화 — 화면에서 두 번 확인한 뒤에만 호출된다 */
@@ -977,6 +1253,18 @@
     setFollowUpDone: setFollowUpDone,
     setCounselArchived: setCounselArchived,
     getUpcomingChecks: getUpcomingChecks,
+    PREP_STATES: PREP_STATES,
+    getExams: getExams,
+    getExam: getExam,
+    saveExam: saveExam,
+    setExamArchived: setExamArchived,
+    getExamStudents: getExamStudents,
+    getPrep: getPrep,
+    getPreps: getPreps,
+    savePrep: savePrep,
+    savePrepChecklist: savePrepChecklist,
+    examDday: examDday,
+    prepProgress: prepProgress,
     diffDays: diffDays,
     dayOffset: dayOffset,
     getStats: getStats,

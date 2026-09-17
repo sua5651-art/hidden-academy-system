@@ -2,9 +2,9 @@
 const fs=require('fs'),vm=require('vm');
 const mem={};const localStorage={getItem:k=>k in mem?mem[k]:null,setItem:(k,v)=>{mem[k]=String(v)},removeItem:k=>{delete mem[k]}};
 const ctx={console,localStorage,Date,JSON,Math,Object,Array,String,Number,isNaN,parseInt};ctx.window=ctx;vm.createContext(ctx);
-for(const f of ['assets/js/store.js','assets/js/feedback.js','assets/js/homework.js','assets/js/counsel.js'])
+for(const f of ['assets/js/store.js','assets/js/feedback.js','assets/js/homework.js','assets/js/counsel.js','assets/js/exam.js'])
   vm.runInContext(fs.readFileSync(require('path').join(__dirname,'..',f),'utf8'),ctx,{filename:f});
-const {Store,FeedbackEngine,HomeworkEngine,CounselEngine}=ctx;
+const {Store,FeedbackEngine,HomeworkEngine,CounselEngine,ExamEngine}=ctx;
 
 const s=Store.saveStudent({name:'홍길동'});
 const bad=new Set();
@@ -58,6 +58,36 @@ for(const type of Store.COUNSEL_TYPES.map(t=>t.code)){
       const v=CounselEngine.verifySummary(lines,rec);
       v.errors.forEach(e=>bad.add('상담 오류 '+e.token));
       v.warnings.forEach(w=>bad.add('상담['+type+'/'+target+'/'+(filled?'전체':'최소')+'] '+w.token));
+    }
+  }
+}
+
+// 내신 체크리스트: 준비 상태 · 취약 문법 · 오답 · 보강 전 조합
+const EX = Store.saveExam({ school:'정왕중', grade:'중3', term:'2학기 중간고사',
+  textbook:'천재(이재영)', examDate: Store.dayOffset(9),
+  units:['Lesson 5','Lesson 6'], rangeNote:'교과서 본문 + 워크북',
+  grammarPoints:['관계대명사','수동태'], performance:'서술형 30%' });
+const EXAM = Store.getExam(EX.id);
+Store.saveStudent({ name:'테스트생', school:'정왕중', grade:'중3' });
+const EST = Store.getExamStudents(EX.id)[0];
+for(const u1 of ['todo','doing','done']){
+  for(const m1 of ['todo','doing','done']){
+    for(const extra of [true,false]){
+      for(const wrong of [0,7]){
+        for(const incDone of [true,false]){
+          Store.savePrep({ examId:EX.id, studentId:EST.id, targetScore: 95,
+            units:{[EXAM.units[0].id]:u1,[EXAM.units[1].id]:'done'},
+            memorize:{[EXAM.units[0].id]:m1,[EXAM.units[1].id]:'done'},
+            weakGrammar: extra?[EXAM.grammarPoints[0].id]:[],
+            weakGrammarNote: extra?'관계대명사 what 용법':'',
+            wrongCount: wrong, needsExtra: extra, extraNote: extra?'주말 보강 1회':'' });
+          const pr=Store.getPrep(EX.id,EST.id);
+          const txt=ExamEngine.buildChecklist(EXAM,pr,Store.getSettings(),{includeDone:incDone});
+          const v=ExamEngine.verifyChecklist(txt,EXAM,pr);
+          v.errors.forEach(e=>bad.add('내신 오류 '+e.token));
+          v.warnings.forEach(w=>bad.add('내신['+u1+'/'+m1+'/'+(extra?'약점':'-')+'] '+w.token));
+        }
+      }
     }
   }
 }
