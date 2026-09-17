@@ -118,15 +118,41 @@ function doPost(e) {
 function doGet() {
   var kinds = [];
   for (var k in LAYOUT) kinds.push(LAYOUT[k].sheet);
+
+  // 이 스크립트가 시트에 붙어 있는지 확인한다.
+  // 구글 시트에서 "확장 프로그램 → Apps Script" 로 만들지 않고
+  // script.google.com 에서 따로 만들면 여기가 비어 있다.
+  var fileName = findSpreadsheetName();
+  if (!fileName) {
+    return reply(false,
+      '시트에 연결되어 있지 않습니다. 구글 시트를 열고 확장 프로그램 → Apps Script 에서 ' +
+      '다시 만들어 코드를 붙여넣어 주세요.');
+  }
+
   return reply(true, '연결되었습니다. 이 주소를 앱 설정에 넣으세요.', {
+    sheet_file: fileName,
     sheets: kinds,
     secret_set: SECRET !== '여기에-직접-정한-비밀번호를-넣으세요'
   });
 }
 
+/** 붙어 있는 시트 파일의 이름. 붙어 있지 않으면 빈 문자열 */
+function findSpreadsheetName() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    return ss ? ss.getName() : '';
+  } catch (e) {
+    return '';
+  }
+}
+
 /** 시트를 찾고, 없으면 제목줄과 함께 새로 만든다 */
 function getSheet(layout) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error('시트에 연결되어 있지 않습니다. ' +
+      '구글 시트의 확장 프로그램 → Apps Script 에서 만든 스크립트여야 합니다.');
+  }
   var sheet = ss.getSheetByName(layout.sheet);
 
   if (!sheet) {

@@ -34,6 +34,7 @@ const sheets = {};
 const ctx = {
   console, JSON, String, Object, Array, Number,
   SpreadsheetApp: { getActiveSpreadsheet: () => ({
+    getName: () => '테스트 시트',
     getSheetByName: n => sheets[n] || null,
     insertSheet: n => (sheets[n] = makeSheet())
   })},
@@ -53,7 +54,19 @@ const post = body => JSON.parse(ctx.doPost({ postData: { contents: JSON.stringif
 console.log('\n[1] 연결 확인 (브라우저로 주소를 열었을 때)');
 const g = JSON.parse(ctx.doGet().getContent());
 check('연결 응답', g.ok === true && g.message.includes('연결'));
+check('붙어 있는 시트 파일 이름 표시', g.data.sheet_file === '테스트 시트', JSON.stringify(g.data));
 check('만들 시트 목록 안내', JSON.stringify(g.data.sheets) === '["수업기록","숙제기록","상담기록"]');
+
+console.log('\n[1-2] 시트에 붙어 있지 않을 때 (script.google.com 에서 따로 만든 경우)');
+const realSS = ctx.SpreadsheetApp.getActiveSpreadsheet;
+ctx.SpreadsheetApp.getActiveSpreadsheet = () => null;
+const g2 = JSON.parse(ctx.doGet().getContent());
+check('연결 안 됐다고 알려 줌', g2.ok === false && g2.message.includes('시트에 연결되어 있지 않습니다'), g2.message);
+check('무엇을 해야 하는지 알려 줌', g2.message.includes('확장 프로그램'));
+const p2 = JSON.parse(ctx.doPost({ postData:{ contents: JSON.stringify({
+  secret:'test-secret', type:'lesson', records:[{ record_id:'x', student_name:'테스트' }] })}}).getContent());
+check('기록을 보내도 같은 안내', p2.ok === false && p2.message.includes('시트에 연결되어 있지 않습니다'), p2.message);
+ctx.SpreadsheetApp.getActiveSpreadsheet = realSS;
 
 console.log('\n[2] 비밀번호 검사');
 check('비밀번호 틀리면 거부', post({ secret:'틀림', type:'lesson', records:[{}] }).ok === false);
