@@ -297,6 +297,8 @@ a.list__item:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px
 .kv { display: grid; grid-template-columns: 88px 1fr; gap: 9px 12px; margin: 0; font-size: 14px; }
 .kv dt { color: var(--text-dim); font-size: var(--fs-help); font-weight: 600; padding-top: 1px; }
 .kv dd { margin: 0; word-break: break-word; white-space: pre-wrap; color: var(--text-body); }
+/* 진도·숙제·메모처럼 라벨이 짧을 때 */
+.kv--tight { grid-template-columns: 44px 1fr; gap: 6px 10px; font-size: 13.5px; }
 
 /* ── 하단 탭 ────────────────────────────── */
 .tabbar {

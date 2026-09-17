@@ -56,6 +56,10 @@ if node -e "try{require('playwright')}catch(e){try{require('/opt/node22/lib/node
   echo "▶ 리포트 화면 테스트 (집계 미리보기 → 초안 → 수정 → 확정)"
   node tests/report-ui.test.js || FAIL=1
   echo ""
+  echo "▶ 최근 수업 기록 검사 (기존 저장 + 새 조회)"
+  node tests/recent-lessons.test.js || FAIL=1
+
+  echo ""
   echo "▶ 디자인 요구사항 검사 (흰 배경·네이비·한 열·가로스크롤·버튼폭·위계·장식)"
   node tests/design.test.js || FAIL=1
   kill $SRV $MOCK 2>/dev/null

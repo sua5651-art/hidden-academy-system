@@ -370,6 +370,68 @@
 
   // ───────────────────────── 수업 기록 작성/수정 ─────────────────────────
 
+  /**
+   * 수업 기록 작성 화면에서 보여 주는 "최근 수업 기록".
+   *
+   * 화면에 쓰는 항목과 저장된 필드의 대응 (필드명은 바꾸지 않았다)
+   *   학생명  → lesson.studentName
+   *   수업일  → lesson.date
+   *   진도    → lesson.input.progress
+   *   숙제    → lesson.input.homework
+   *   메모    → lesson.input.memo
+   *
+   * 최신 기록이 위에 오도록 Store.getLessons 의 정렬(날짜 내림차순)을 그대로 쓴다.
+   * 수정 중인 기록은 자기 자신이므로 목록에서 뺀다.
+   */
+  var RECENT_LIMIT = 5;
+
+  function renderRecentLessons(studentId, excludeId) {
+    var box = $('#recentBox');
+    if (!box) return;
+
+    if (!studentId) {
+      box.innerHTML = '<div class="note note--info">학생을 선택하면 그 학생의 최근 수업 기록이 여기에 표시됩니다.</div>';
+      return;
+    }
+
+    var list = Store.getLessons({ studentId: studentId })
+      .filter(function (l) { return l.id !== excludeId; })
+      .slice(0, RECENT_LIMIT);
+
+    if (!list.length) {
+      var stu = Store.getStudent(studentId);
+      box.innerHTML = '<div class="note note--info">' +
+        esc((stu && stu.name) || '이 학생') + ' 학생의 저장된 수업 기록이 아직 없습니다.<br>' +
+        '지금 작성하는 기록이 첫 번째가 됩니다.</div>';
+      return;
+    }
+
+    function row(label, value) {
+      var v = trimText(value);
+      return v ? '<dt>' + label + '</dt><dd>' + esc(v) + '</dd>' : '';
+    }
+
+    box.innerHTML =
+      '<div class="list__meta" style="margin-bottom:8px">최근 ' + list.length + '회 · 최신순</div>' +
+      '<ul class="list">' + list.map(function (l) {
+        var i = l.input || {};
+        return '<li class="list__item">' +
+          '<div class="list__row">' +
+            '<span class="list__name">' + esc(FeedbackEngine.formatDate(l.date)) + '</span>' +
+            statusBadge(l.feedback && l.feedback.status) +
+          '</div>' +
+          '<div class="list__meta">' + esc(l.studentName) +
+            (l.teacher ? ' · ' + esc(l.teacher) : '') +
+            ' · 이해도 ' + esc(levelLabel(i.understanding)) + '</div>' +
+          '<dl class="kv kv--tight" style="margin-top:9px">' +
+            row('진도', i.progress) + row('숙제', i.homework) + row('메모', i.memo) +
+          '</dl>' +
+        '</li>';
+      }).join('') + '</ul>';
+  }
+
+  function trimText(v) { return String(v == null ? '' : v).trim(); }
+
   function renderLessonForm(id) {
     var isNew = !id;
     var lesson = isNew ? null : Store.getLesson(id);
@@ -453,6 +515,10 @@
     html += '<div class="btn-row"><button type="submit" class="btn btn--block">' + (isNew ? '저장하고 피드백 만들기' : '수정 내용 저장') + '</button></div>';
     html += '</form>';
 
+    // 저장 버튼 아래 — 그 학생의 최근 수업 기록 (읽기 전용)
+    html += '<h2 class="section-title">최근 수업 기록</h2>';
+    html += '<div id="recentBox"></div>';
+
     view.innerHTML = html;
 
     // 이해도 버튼 동작
@@ -474,7 +540,7 @@
       });
     }
 
-    // 학생을 고르면 그 학생의 담당 교사를 자동으로 채운다
+    // 학생을 고르면 담당 교사를 자동으로 채우고, 최근 수업 기록을 불러온다
     var studentSel = $('select[name="studentId"]');
     if (studentSel) studentSel.addEventListener('change', function () {
       var stu = Store.getStudent(studentSel.value);
@@ -482,7 +548,11 @@
         tInput.value = stu.teacher;
         if (tSel) tSel.value = teachers.indexOf(stu.teacher) !== -1 ? stu.teacher : '';
       }
+      renderRecentLessons(studentSel.value, isNew ? null : id);
     });
+
+    // 화면을 열 때도 한 번 (수정 화면은 학생이 이미 정해져 있다)
+    renderRecentLessons(studentSel ? studentSel.value : '', isNew ? null : id);
 
     $('#lessonForm').addEventListener('submit', function (e) {
       e.preventDefault();
