@@ -191,7 +191,27 @@
 📋 시험 전 최종 체크리스트 — 남은 것만 뽑아 냄
 ```
 
-### 화면 ⑧ 설정
+### 화면 ⑧ 월간 리포트 (탭 없음 — 홈 버튼 / 학생 화면에서 진입)
+
+**리포트 목록** (`#/reports`) — 최근 달이 먼저. 각 줄에 기간과 집계 건수
+**리포트 만들기** (`#/report/new`) — 학생·월 선택 → **모을 기록을 미리 보여 줌**
+- 기록이 하나도 없으면 경고, 같은 달 리포트가 이미 있으면 안내
+
+**리포트 상세** (`#/report/:id`)
+```
+집계 근거 (기간 · 수업/숙제/상담 건수 · 집계 시각)
+    │  └ ↻ 다시 집계해서 초안 새로 만들기
+    ▼
+문단 6개 편집 — 학습내용 / 잘한점 / 보완할점 / 습관·숙제 / 상담 / 목표
+    │
+    ▼
+학부모 전송용 최종 문장 (실시간 미리보기)
+    │
+    ▼
+임시 저장 → ✅ 최종 확정 (읽기 전용 잠금) → 📋 복사
+```
+
+### 화면 ⑨ 설정
 
 - 교사 이름 목록 관리
 - 문장 톤(말투) 선택: `간결` / `기본` / `따뜻함`
@@ -229,7 +249,8 @@
   "homeworks": [ /* 숙제 기록 객체 */ ],
   "counsels": [ /* 상담 기록 객체 */ ],
   "exams":    [ /* 학교 공통 시험 정보 */ ],
-  "preps":    [ /* 학생별 준비 기록 */ ]
+  "preps":    [ /* 학생별 준비 기록 */ ],
+  "reports":  [ /* 월간 학습 리포트 */ ]
 }
 ```
 
@@ -443,7 +464,78 @@
 | `pending` | 미완료 목록 `{unit, kind, state}` — 체크리스트와 강조 표시에 함께 씀 |
 | `ready` | 전부 완료 + 취약 문법 없음 + 보강 불필요 |
 
-### 3-5. 수업 기록 (lesson) — 핵심 데이터
+### 3-5. 월간 리포트 — 생성 결과와 원본 기간을 함께 보관
+
+```jsonc
+{
+  "id": "rpt_7c1a2b",
+  "studentId": "stu_l8f2k1",
+  "studentName": "김민준",
+  "className": "예비 고1반",
+
+  // ── 어느 기간을 모았는지 ──
+  "period": {
+    "month": "2026-09",
+    "from": "2026-09-01", "to": "2026-09-30",
+    "label": "2026년 9월"
+  },
+
+  // ── 무엇을 근거로 썼는지 (원본이 바뀌어도 이 값은 그대로) ──
+  "source": {
+    "lessonIds": ["les_…", "…"],
+    "homeworkIds": ["hw_…"],
+    "counselIds": ["cns_…"],
+    "counts": { "lessons": 6, "homeworks": 3, "counsels": 1 },
+    "from": "2026-09-01", "to": "2026-09-30",
+    "collectedAt": "2026-10-01T02:00:00.000Z"
+  },
+
+  // ── 집계 숫자 ──
+  "stats": {
+    "lessonCount": 6,
+    "levelCounts": { "excellent": 1, "good": 3, "average": 1, "needs_work": 1, "weak": 0 },
+    "goodCount": 4, "lowCount": 1,
+    "progress": [ { "text": "Lesson 6 본문 해석", "count": 3 } ],
+    "improve":  [ { "text": "수동태 시제 변환 반복", "count": 2 } ],
+    "homework": { "records": 3, "totalItems": 6, "doneItems": 4, "rate": 67,
+                  "checkedRecords": 2, "pending": [ { "text": "오답노트 정리", "count": 1 } ] },
+    "counsels": [ { "date": "2026-09-14", "type": "성적 상담", "reply": "…", "followUp": "…" } ]
+  },
+
+  // ── 문단 (교사가 각각 수정) ──
+  "sections": {
+    "learning": "…", "strengths": "…", "improvements": "…",
+    "habit": "…", "counsel": "…", "goal": "…"
+  },
+  "text": "합쳐진 최종 문장",
+  "status": "generated",           // generated | edited | final
+  "edited": false,
+  "confirmedAt": "",
+  "history": [ { "at": "…", "status": "generated", "text": "…" } ],
+  "archived": false,
+  "createdAt": "…", "updatedAt": "…"
+}
+```
+
+**같은 내용을 반복하지 않는 방법** (규칙 1)
+
+1. `tally()` — 같은 항목을 묶고 몇 번 나왔는지 센다. 2회 이상일 때만 `(3회)` 를 붙인다.
+2. `makeDeduper()` — 리포트 전체에서 한 번 쓴 문장은 다시 통과시키지 않는다.
+   띄어쓰기·문장부호 차이는 같은 문장으로 본다.
+3. `verify()` 가 완성된 본문을 다시 훑어 중복이 남아 있으면 경고한다.
+
+**다음 달 목표를 만드는 규칙** (규칙 2)
+
+| 넣는 것 | 근거 |
+|---|---|
+| 반복된 보완 항목 (최대 2개) | `stats.improve` |
+| 완료하지 못한 숙제 개수 | `stats.homework.pending.length` |
+| 상담 후속조치 | 후속조치가 남은 상담 |
+| 다가오는 시험 대비 | 학생 학교·학년에 맞는 `exam` |
+
+넷 다 없으면 **"선생님이 직접 적어 주세요"** 로 비워 둔다. 목표를 지어내지 않는다.
+
+### 3-6. 수업 기록 (lesson) — 핵심 데이터
 
 ```jsonc
 {
@@ -635,6 +727,7 @@ hidden-academy-system/
 │       ├── homework.js     숙제 안내 문장 생성
 │       ├── counsel.js      상담 요약 (발췌 3~5줄)
 │       ├── exam.js         내신 체크리스트 생성
+│       ├── report.js       월간 리포트 집계·생성
 │       ├── ai.js           Claude API 연결 (선택)
 │       └── app.js          화면 동작 전체
 ├── docs/DESIGN.md          이 문서

@@ -132,6 +132,7 @@
     html += '<a class="btn" href="#/lesson/new">✏️ 수업 기록</a>';
     html += '<a class="btn" href="#/homework/new">📚 숙제 배정</a>';
     html += '<a class="btn" href="#/counsel/new">💬 상담 기록</a>';
+    html += '<a class="btn" href="#/reports">📊 월간 리포트</a>';
     html += '</div>';
 
     // 시험 대비 — 다가오는 시험과 남은 기간 (기능 3)
@@ -298,6 +299,8 @@
       html += '<a class="btn btn--ghost btn--sm" href="#/lessons">📋 수업 ' + lesCount + '건</a>';
       html += '<a class="btn btn--ghost btn--sm" href="#/homeworks">📚 숙제 ' + hwCount + '건</a>';
       html += '<a class="btn btn--ghost btn--sm" href="#/counsels?student=' + esc(id) + '">💬 상담 ' + cnsCount + '건</a>';
+      var rptCount = Store.getReports({ studentId: id }).length;
+      html += '<a class="btn btn--ghost btn--sm" href="#/reports?student=' + esc(id) + '">📊 리포트 ' + rptCount + '건</a>';
       html += '</div>';
       // 이 학생 학교·학년에 맞는 시험 (기능 1 — 자동 연결 결과를 학생 쪽에서도 보여 준다)
       var myExams = Store.getExams({ upcoming: true }).filter(function (ex) {
@@ -314,6 +317,7 @@
       }
       html += '<div class="btn-row" style="margin-top:8px">';
       html += '<a class="btn btn--sm" href="#/counsel/new?student=' + esc(id) + '">＋ 상담 기록 작성</a>';
+      html += '<a class="btn btn--sm" href="#/report/new?student=' + esc(id) + '">＋ 월간 리포트</a>';
       html += '</div></div>';
 
       html += '<div class="note note--info" style="margin-top:16px">학생 정보는 삭제되지 않습니다. 더 이상 다니지 않는 학생은 <b>보관</b> 처리하면 목록에서만 숨겨지고 기록은 그대로 남습니다.</div>';
@@ -1850,6 +1854,305 @@
     });
   }
 
+  // ───────────────────────── 월간 학습 리포트 ─────────────────────────
+
+  function reportBadge(st) {
+    var m = Store.REPORT_STATUS[st] || Store.REPORT_STATUS.generated;
+    return '<span class="badge badge--' + m.code + '">' + esc(m.label) + '</span>';
+  }
+
+  // ── 리포트 목록 ──
+  var rptFilter = { studentId: '' };
+
+  function renderReports() {
+    var students = Store.getStudents({ includeArchived: true });
+    var list = Store.getReports(rptFilter.studentId ? { studentId: rptFilter.studentId } : {});
+    var who = rptFilter.studentId ? (Store.getStudent(rptFilter.studentId) || {}).name : '';
+    setHeader('월간 리포트', who ? who + ' 학생' : '', !!rptFilter.studentId);
+
+    var html = '';
+    html += '<a class="btn btn--block" href="#/report/new' + (rptFilter.studentId ? '?student=' + esc(rptFilter.studentId) : '') + '">＋ 월간 리포트 만들기</a>';
+    html += '<div class="note note--info" style="margin-top:14px">한 달치 <b>수업 · 숙제 · 상담 기록</b>을 모아 초안을 만들어 드립니다. 만든 뒤 직접 고칠 수 있습니다.</div>';
+
+    html += '<div class="field"><select id="rptStudent"><option value="">전체 학생</option>' + students.map(function (st) {
+      return '<option value="' + esc(st.id) + '"' + (rptFilter.studentId === st.id ? ' selected' : '') + '>' + esc(st.name) + '</option>';
+    }).join('') + '</select></div>';
+
+    if (!list.length) {
+      html += '<div class="empty"><span class="empty__icon">📊</span>아직 만든 리포트가 없습니다.</div>';
+    } else {
+      html += '<ul class="list">' + list.map(function (r) {
+        var c = (r.source && r.source.counts) || {};
+        return '<a class="list__item" href="#/report/' + esc(r.id) + '">' +
+          '<div class="list__row"><span class="list__name">' + esc(r.studentName) + ' · ' + esc(r.period.label) + '</span>' +
+            reportBadge(r.status) + '</div>' +
+          '<div class="list__meta">' + esc(r.period.from) + ' ~ ' + esc(r.period.to) +
+            ' · 수업 ' + (c.lessons || 0) + '회 · 숙제 ' + (c.homeworks || 0) + '회 · 상담 ' + (c.counsels || 0) + '건</div>' +
+        '</a>';
+      }).join('') + '</ul>';
+    }
+    view.innerHTML = html;
+    $('#rptStudent').addEventListener('change', function (e) { rptFilter.studentId = e.target.value; renderReports(); });
+  }
+
+  // ── 리포트 만들기 : 학생 · 기간 선택 → 집계 미리보기 ──
+  function renderReportNew(presetStudent) {
+    var students = Store.getStudents();
+    if (!students.length) {
+      setHeader('월간 리포트', '', true);
+      view.innerHTML = '<div class="empty"><span class="empty__icon">👥</span>먼저 학생을 등록해야 리포트를 만들 수 있습니다.</div>' +
+                       '<a class="btn btn--block" href="#/student/new">＋ 학생 추가하러 가기</a>';
+      return;
+    }
+    setHeader('월간 리포트 만들기', '', true);
+
+    var html = '<div class="card">';
+    html += field('학생', '<select id="rptNewStudent" required><option value="">— 학생 선택 —</option>' +
+      students.map(function (st) {
+        return '<option value="' + esc(st.id) + '"' + (presetStudent === st.id ? ' selected' : '') + '>' + esc(st.name) + '</option>';
+      }).join('') + '</select>', true);
+    html += field('기간 (월)', '<input type="month" id="rptMonth" value="' + esc(Store.thisMonth()) + '">', true,
+      '그 달 1일부터 마지막 날까지의 기록을 모읍니다.');
+    html += '</div>';
+    html += '<div id="rptPreview"></div>';
+    html += '<div class="btn-row"><button class="btn btn--block" id="rptMakeBtn" disabled>집계해서 초안 만들기</button></div>';
+    view.innerHTML = html;
+
+    function refresh() {
+      var sid = $('#rptNewStudent').value;
+      var month = $('#rptMonth').value;
+      var box = $('#rptPreview');
+      var btn = $('#rptMakeBtn');
+      if (!sid || !month) {
+        box.innerHTML = '<div class="note note--info">학생과 기간을 고르면 모을 기록을 미리 보여 드립니다.</div>';
+        btn.disabled = true;
+        return;
+      }
+      var period = Store.monthRange(month);
+      var data = ReportEngine.collect(sid, period);
+      var c = data.stats;
+      var existing = Store.findReport(sid, period.month);
+
+      var h = '<div class="card"><h3 class="card__title">모을 기록 <small>' + esc(period.from) + ' ~ ' + esc(period.to) + '</small></h3>';
+      h += '<div class="stats" style="grid-template-columns:repeat(3,1fr);margin-bottom:0">';
+      h += '<div class="stat"><span class="stat__num">' + c.lessonCount + '</span><span class="stat__label">수업 기록</span></div>';
+      h += '<div class="stat"><span class="stat__num">' + c.homework.records + '</span><span class="stat__label">숙제 기록</span></div>';
+      h += '<div class="stat"><span class="stat__num">' + data.counsels.length + '</span><span class="stat__label">상담 기록</span></div>';
+      h += '</div></div>';
+
+      if (!c.lessonCount && !c.homework.records && !data.counsels.length) {
+        h += '<div class="note note--warn">이 기간에 저장된 기록이 없습니다. 기록이 없으면 <b>내용이 거의 없는 리포트</b>가 만들어집니다.</div>';
+      }
+      if (existing) {
+        h += '<div class="note note--warn">이 학생의 <b>' + esc(period.label) + ' 리포트가 이미 있습니다.</b> 계속하면 그 리포트를 다시 만듭니다.' +
+             (existing.status === 'final' ? '<br>확정된 리포트라 먼저 잠금을 해제해야 합니다.' : '') + '</div>';
+      }
+      box.innerHTML = h;
+      btn.disabled = !!(existing && existing.status === 'final');
+    }
+
+    $('#rptNewStudent').addEventListener('change', refresh);
+    $('#rptMonth').addEventListener('change', refresh);
+    refresh();
+
+    $('#rptMakeBtn').addEventListener('click', function () {
+      var sid = $('#rptNewStudent').value;
+      var period = Store.monthRange($('#rptMonth').value);
+      var student = Store.getStudent(sid);
+      if (!student) return toast('학생을 선택해 주세요.', 'err');
+      var settings = Store.getSettings();
+
+      // 다가오는 시험이 있으면 다음 달 목표에 반영한다
+      var upcoming = Store.getExams({ upcoming: true }).filter(function (ex) {
+        if (String(student.school || '').trim() !== ex.school) return false;
+        if (ex.grade && String(student.grade || '').trim() !== ex.grade) return false;
+        return true;
+      })[0];
+
+      var res = ReportEngine.generate(student, period, settings, { upcomingExam: upcoming });
+      var r = Store.saveReport({
+        studentId: sid, period: period,
+        source: res.source, stats: res.stats,
+        sections: res.sections, text: res.text, status: 'generated'
+      });
+      if (!r.ok) return toast(r.error, 'err');
+      toast('리포트 초안을 만들었습니다.', 'ok');
+      go('#/report/' + r.id);
+    });
+  }
+
+  // ── 리포트 상세 : 문단별 수정 + 확정 ──
+  function renderReportDetail(id) {
+    var rep = Store.getReport(id);
+    if (!rep) { toast('리포트를 찾을 수 없습니다.', 'err'); return go('#/reports'); }
+    var settings = Store.getSettings();
+    var isFinal = rep.status === 'final';
+    setHeader(rep.studentName + ' 리포트', rep.period.label, true);
+
+    var src = rep.source || {};
+    var counts = src.counts || {};
+    var st = rep.stats || {};
+
+    var html = '';
+
+    // 어떤 기록으로 만들었는지 (원본 기간과 함께 저장)
+    html += '<div class="card"><h3 class="card__title">집계 근거 ' + reportBadge(rep.status) + '</h3><dl class="kv">';
+    html += '<dt>기간</dt><dd>' + esc(rep.period.from) + ' ~ ' + esc(rep.period.to) + ' (' + esc(rep.period.label) + ')</dd>';
+    html += '<dt>수업</dt><dd>' + (counts.lessons || 0) + '회' + (st.lessonCount != null ? '' : '') + '</dd>';
+    html += '<dt>숙제</dt><dd>' + (counts.homeworks || 0) + '회' +
+            (st.homework && st.homework.totalItems ? ' · ' + st.homework.doneItems + '/' + st.homework.totalItems + '개 완료' : '') + '</dd>';
+    html += '<dt>상담</dt><dd>' + (counts.counsels || 0) + '건</dd>';
+    if (src.collectedAt) html += '<dt>집계 시각</dt><dd>' + esc(new Date(src.collectedAt).toLocaleString('ko-KR')) + '</dd>';
+    html += '</dl>';
+    html += '<div class="note note--info" style="margin-top:12px">이 리포트는 <b>위 기간의 기록</b>으로 만들었습니다. 이후에 원본 기록이 바뀌어도 이 리포트는 그대로 남습니다.</div>';
+    html += '<div class="btn-row" style="margin-top:12px">';
+    html += '<button class="btn btn--ghost btn--sm" id="rptRegenBtn"' + (isFinal ? ' disabled' : '') + '>↻ 다시 집계해서 초안 새로 만들기</button>';
+    html += '</div></div>';
+
+    html += '<div id="rptWarnArea"></div>';
+
+    // 문단별 편집 (규칙 4 — 교사가 최종 수정)
+    html += '<h2 class="section-title">리포트 문단 <small style="font-weight:400">직접 고칠 수 있습니다</small></h2>';
+    html += '<div class="card' + (isFinal ? ' locked' : '') + '" id="rptEditCard">';
+    ReportEngine.SECTION_ORDER.forEach(function (sec) {
+      html += '<div class="fb-section"><label>' + esc(sec.title) +
+        (sec.key === 'counsel' ? '<span class="opt">비우면 문단 생략</span>' : '') + '</label>' +
+        '<textarea data-sec="' + sec.key + '"' + (isFinal ? ' readonly' : '') + '>' +
+        esc((rep.sections && rep.sections[sec.key]) || '') + '</textarea></div>';
+    });
+    html += '</div>';
+
+    html += '<h2 class="section-title">학부모 전송용 최종 문장</h2>';
+    html += '<div class="fb-preview" id="rptPreviewBox">' + esc(rep.text || '문단을 채운 뒤 아래 버튼을 눌러 주세요.') + '</div>';
+
+    html += '<div class="btn-row" style="margin-top:14px">';
+    html += '<button class="btn btn--ghost" id="rptCopyBtn">📋 복사</button>';
+    if (isFinal) {
+      html += '<button class="btn btn--ghost" id="rptUnlockBtn">🔓 수정 잠금 해제</button>';
+    } else {
+      html += '<button class="btn btn--ghost" id="rptSaveBtn">임시 저장</button>';
+      html += '<button class="btn btn--ok" id="rptFinalBtn">✅ 최종 확정</button>';
+    }
+    html += '</div>';
+
+    if (isFinal && rep.confirmedAt) {
+      html += '<div class="note note--ok" style="margin-top:14px">' +
+        esc(new Date(rep.confirmedAt).toLocaleString('ko-KR')) + ' 에 확정되었습니다.</div>';
+    }
+
+    if (rep.history && rep.history.length) {
+      html += '<h2 class="section-title">수정 이력 (' + rep.history.length + '회)</h2>';
+      html += '<ul class="list">' + rep.history.slice().reverse().slice(0, 5).map(function (h) {
+        return '<li class="list__item"><div class="list__row"><span class="list__meta">' +
+          esc(new Date(h.at).toLocaleString('ko-KR')) + '</span>' + reportBadge(h.status) + '</div>' +
+          '<div class="list__excerpt">' + esc(h.text) + '</div></li>';
+      }).join('') + '</ul>';
+    }
+
+    view.innerHTML = html;
+    bindAutoGrow(view);
+
+    function collectSections() {
+      var out = {};
+      $$('#rptEditCard textarea').forEach(function (ta) { out[ta.dataset.sec] = ta.value; });
+      return out;
+    }
+    function refreshPreview() {
+      var sections = collectSections();
+      var text = ReportEngine.composeText(rep, sections, settings);
+      $('#rptPreviewBox').textContent = text;
+      return { sections: sections, text: text };
+    }
+    $$('#rptEditCard textarea').forEach(function (ta) {
+      ta.addEventListener('input', refreshPreview);
+    });
+
+    // 생성 직후 검증 결과를 보여 준다
+    (function showCheck() {
+      var data = ReportEngine.collect(rep.studentId, rep.period);
+      var check = ReportEngine.verify(rep.sections || {}, data, rep);
+      renderWarningsInto('#rptWarnArea', check);
+    })();
+
+    var regen = $('#rptRegenBtn');
+    if (regen) regen.addEventListener('click', function () {
+      confirmBox('지금 저장된 기록으로 초안을 다시 만들까요?\n직접 고치신 문장은 사라집니다.', '다시 만들기').then(function (ok) {
+        if (!ok) return;
+        var student = Store.getStudent(rep.studentId);
+        if (!student) return toast('학생을 찾을 수 없습니다.', 'err');
+        var upcoming = Store.getExams({ upcoming: true }).filter(function (ex) {
+          if (String(student.school || '').trim() !== ex.school) return false;
+          if (ex.grade && String(student.grade || '').trim() !== ex.grade) return false;
+          return true;
+        })[0];
+        var res = ReportEngine.generate(student, rep.period, settings, { upcomingExam: upcoming });
+        var r = Store.saveReport({
+          id: rep.id, studentId: rep.studentId, period: rep.period,
+          source: res.source, stats: res.stats, sections: res.sections, text: res.text, status: 'generated'
+        });
+        if (!r.ok) return toast(r.error, 'err');
+        toast('초안을 다시 만들었습니다.', 'ok');
+        renderReportDetail(id);
+      });
+    });
+
+    var saveBtn = $('#rptSaveBtn');
+    if (saveBtn) saveBtn.addEventListener('click', function () {
+      var res = refreshPreview();
+      var r = Store.saveReport({
+        id: rep.id, studentId: rep.studentId, period: rep.period,
+        source: rep.source, stats: rep.stats,
+        sections: res.sections, text: res.text, status: 'edited'
+      });
+      if (!r.ok) return toast(r.error, 'err');
+      toast('임시 저장했습니다.', 'ok');
+      rep = Store.getReport(id);
+    });
+
+    var finalBtn = $('#rptFinalBtn');
+    if (finalBtn) finalBtn.addEventListener('click', function () {
+      var res = refreshPreview();
+      if (!res.text.trim()) return toast('내용이 비어 있습니다.', 'err');
+      var data = ReportEngine.collect(rep.studentId, rep.period);
+      var check = ReportEngine.verify(res.sections, data, rep);
+      renderWarningsInto('#rptWarnArea', check);
+      var proceed = Promise.resolve(true);
+      if (check.errors.length) {
+        proceed = confirmBox('기록에 없는 내용이 ' + check.errors.length + '건 있습니다.\n\n' +
+          check.errors.slice(0, 3).map(function (e) { return '· ' + e.message; }).join('\n') +
+          '\n\n그래도 확정하시겠습니까?', '확인하고 확정');
+      }
+      proceed.then(function (ok) {
+        if (!ok) return;
+        var r = Store.saveReport({
+          id: rep.id, studentId: rep.studentId, period: rep.period,
+          source: rep.source, stats: rep.stats,
+          sections: res.sections, text: res.text, status: 'final'
+        });
+        if (!r.ok) return toast(r.error, 'err');
+        toast('최종 확정했습니다.', 'ok');
+        renderReportDetail(id);
+      });
+    });
+
+    var unlockBtn = $('#rptUnlockBtn');
+    if (unlockBtn) unlockBtn.addEventListener('click', function () {
+      confirmBox('확정을 해제하고 다시 수정할 수 있게 할까요?', '잠금 해제').then(function (ok) {
+        if (!ok) return;
+        var r = Store.unlockReport(id);
+        if (!r.ok) return toast(r.error, 'err');
+        renderReportDetail(id);
+      });
+    });
+
+    $('#rptCopyBtn').addEventListener('click', function () {
+      var text = isFinal ? rep.text : refreshPreview().text;
+      if (!text.trim()) return toast('복사할 내용이 없습니다.', 'err');
+      copyText(text).then(function () { toast('복사했습니다.', 'ok'); })
+                    .catch(function () { toast('복사에 실패했습니다.', 'err'); });
+    });
+  }
+
   // ───────────────────────── 설정 ─────────────────────────
 
   function renderSettings() {
@@ -2029,6 +2332,14 @@
         case 'feedback':
           if (!p[1]) return go('#/lessons');
           renderFeedback(p[1]); setTab('lessons'); break;
+        case 'reports':
+          rptFilter.studentId = routeQuery('student') || rptFilter.studentId;
+          renderReports(); setTab('students'); break;
+        case 'report':
+          if (p[1] === 'new') renderReportNew(routeQuery('student'));
+          else if (p[1]) renderReportDetail(p[1]);
+          else return go('#/reports');
+          setTab('students'); break;
         case 'exams': renderExams(); setTab('students'); break;
         case 'exam':
           if (p[1] === 'new') renderExamForm(null);

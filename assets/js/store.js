@@ -28,7 +28,8 @@
     homeworks: [],
     counsels: [],
     exams: [],
-    preps: []
+    preps: [],
+    reports: []
   };
 
   /** 이해도 5단계 정의 — 화면 표시와 고정 문장을 한 곳에서 관리 */
@@ -166,6 +167,7 @@
     s.counsels = Array.isArray(s.counsels) ? s.counsels : [];
     s.exams = Array.isArray(s.exams) ? s.exams : [];
     s.preps = Array.isArray(s.preps) ? s.preps : [];
+    s.reports = Array.isArray(s.reports) ? s.reports : [];
     s.students.forEach(normalizeStudent);
     return s;
   }
@@ -675,6 +677,8 @@
     if (!filter.includeArchived) list = list.filter(function (c) { return !c.archived; });
     if (filter.studentId) list = list.filter(function (c) { return c.studentId === filter.studentId; });
     if (filter.type) list = list.filter(function (c) { return c.type === filter.type; });
+    if (filter.from) list = list.filter(function (c) { return c.date >= filter.from; });
+    if (filter.to) list = list.filter(function (c) { return c.date <= filter.to; });
     if (filter.target) list = list.filter(function (c) { return c.target === filter.target; });
     if (filter.followUp === true) {
       list = list.filter(function (c) { return c.followUp && c.followUp.needed && !c.followUp.done; });
@@ -1103,6 +1107,152 @@
     };
   }
 
+  // ────────────────────────────── 월간 학습 리포트 ──────────────────────────────
+
+  /**
+   * 리포트는 "언제부터 언제까지의 무슨 기록으로 만들었는지"를 함께 저장한다.
+   * 나중에 원본 기록이 수정돼도 그때 무엇을 보고 썼는지 확인할 수 있어야 한다.
+   */
+
+  var REPORT_STATUS = {
+    generated: { code: 'generated', label: '생성됨' },
+    edited:    { code: 'edited',    label: '수정됨' },
+    final:     { code: 'final',     label: '확정' }
+  };
+
+  /** 'YYYY-MM' → { from, to, label } */
+  function monthRange(month) {
+    var m = String(month || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(m)) {
+      var d = new Date();
+      m = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    }
+    var parts = m.split('-');
+    var year = Number(parts[0]), mon = Number(parts[1]);
+    var last = new Date(year, mon, 0).getDate();
+    return {
+      month: m,
+      from: m + '-01',
+      to: m + '-' + String(last).padStart(2, '0'),
+      label: year + '년 ' + mon + '월'
+    };
+  }
+
+  function thisMonth() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  function getReports(filter) {
+    filter = filter || {};
+    var list = load().reports.slice();
+    if (!filter.includeArchived) list = list.filter(function (r) { return !r.archived; });
+    if (filter.studentId) list = list.filter(function (r) { return r.studentId === filter.studentId; });
+    if (filter.month) list = list.filter(function (r) { return r.period && r.period.month === filter.month; });
+    if (filter.status) list = list.filter(function (r) { return r.status === filter.status; });
+    // 최근 달이 먼저
+    return list.sort(function (a, b) {
+      var am = (a.period && a.period.month) || '', bm = (b.period && b.period.month) || '';
+      if (am !== bm) return am < bm ? 1 : -1;
+      return a.createdAt < b.createdAt ? 1 : -1;
+    });
+  }
+
+  function getReport(id) {
+    var found = load().reports.filter(function (r) { return r.id === id; })[0];
+    return found ? clone(found) : null;
+  }
+
+  /** 같은 학생·같은 달 리포트가 이미 있으면 돌려준다 (중복 생성 방지) */
+  function findReport(studentId, month) {
+    var found = load().reports.filter(function (r) {
+      return r.studentId === studentId && r.period && r.period.month === month && !r.archived;
+    })[0];
+    return found ? clone(found) : null;
+  }
+
+  /**
+   * 리포트 저장. 집계 결과(stats)와 원본 기간·근거 기록(source)을 함께 남긴다.
+   */
+  function saveReport(data) {
+    load();
+    var student = state.students.filter(function (s) { return s.id === data.studentId; })[0];
+    if (!student) return { ok: false, error: '학생을 선택해 주세요.' };
+    if (!data.period || !data.period.month) return { ok: false, error: '리포트 기간을 선택해 주세요.' };
+
+    var existing = state.reports.filter(function (r) {
+      return r.id === data.id || (!data.id && r.studentId === data.studentId &&
+             r.period && r.period.month === data.period.month && !r.archived);
+    })[0];
+
+    if (existing && existing.status === 'final' && !data.unlocked) {
+      return { ok: false, error: '확정된 리포트입니다. 먼저 "수정 잠금 해제"를 눌러 주세요.' };
+    }
+
+    var fields = {
+      studentId: data.studentId,
+      studentName: student.name,
+      className: String(student.className || '').trim(),
+      period: {
+        month: data.period.month,
+        from: data.period.from,
+        to: data.period.to,
+        label: data.period.label
+      },
+      source: data.source || { lessonIds: [], homeworkIds: [], counselIds: [], counts: {}, collectedAt: nowISO() },
+      stats: data.stats || {},
+      sections: Object.assign({
+        learning: '', strengths: '', improvements: '', habit: '', counsel: '', goal: ''
+      }, data.sections || {}),
+      text: data.text != null ? String(data.text) : '',
+      status: data.status || 'generated'
+    };
+
+    if (existing) {
+      // 문장이 바뀌면 이전 내용을 이력에 남긴다
+      if (existing.text && existing.text !== fields.text) {
+        existing.history = existing.history || [];
+        existing.history.push({ at: nowISO(), status: existing.status, text: existing.text });
+        if (existing.history.length > 30) existing.history = existing.history.slice(-30);
+      }
+      var idx = state.reports.indexOf(existing);
+      state.reports[idx] = Object.assign({}, existing, fields, {
+        edited: fields.status === 'edited' || fields.status === 'final' ? true : existing.edited,
+        confirmedAt: fields.status === 'final' ? nowISO() : existing.confirmedAt,
+        updatedAt: nowISO()
+      });
+      var r = persist();
+      return r.ok ? { ok: true, id: existing.id } : r;
+    }
+
+    var record = Object.assign({ id: uid('rpt') }, fields, {
+      edited: false, confirmedAt: '', history: [], archived: false,
+      createdAt: nowISO(), updatedAt: nowISO()
+    });
+    state.reports.push(record);
+    var res = persist();
+    return res.ok ? { ok: true, id: record.id } : res;
+  }
+
+  function unlockReport(id) {
+    load();
+    var r = state.reports.filter(function (x) { return x.id === id; })[0];
+    if (!r) return { ok: false, error: '해당 리포트를 찾을 수 없습니다.' };
+    if (r.status !== 'final') return { ok: true };
+    r.status = 'edited';
+    r.updatedAt = nowISO();
+    return persist();
+  }
+
+  function setReportArchived(id, archived) {
+    load();
+    var r = state.reports.filter(function (x) { return x.id === id; })[0];
+    if (!r) return { ok: false, error: '해당 리포트를 찾을 수 없습니다.' };
+    r.archived = !!archived;
+    r.updatedAt = nowISO();
+    return persist();
+  }
+
   // ────────────────────────────── 통계 ──────────────────────────────
 
   function getStats() {
@@ -1114,6 +1264,8 @@
     var upcomingExams = getExams({ upcoming: true });
     var hwToday = hw.filter(function (h) { return h.date === today; });
     return {
+      reportsTotal: s.reports.filter(function (r) { return !r.archived; }).length,
+      reportsPending: s.reports.filter(function (r) { return !r.archived && r.status !== 'final'; }).length,
       examsTotal: s.exams.filter(function (e) { return !e.archived; }).length,
       examsUpcoming: upcomingExams.length,
       nextExam: upcomingExams[0] || null,
@@ -1152,7 +1304,7 @@
     if (mode === 'replace') {
       state = migrate(mergeDefaults(DEFAULT_STATE, incoming));
       var r0 = persist();
-      return r0.ok ? { ok: true, added: { students: state.students.length, lessons: state.lessons.length, homeworks: state.homeworks.length, counsels: state.counsels.length, exams: state.exams.length, preps: state.preps.length }, mode: 'replace' } : r0;
+      return r0.ok ? { ok: true, added: { students: state.students.length, lessons: state.lessons.length, homeworks: state.homeworks.length, counsels: state.counsels.length, exams: state.exams.length, preps: state.preps.length, reports: state.reports.length }, mode: 'replace' } : r0;
     }
 
     var addedStudents = 0, addedLessons = 0;
@@ -1193,12 +1345,18 @@
       if (p && p.id && !prpKeys[k]) { state.preps.push(p); prpKeys[k] = true; addedPreps++; }
     });
 
+    var addedReports = 0;
+    var rptIds = {}; state.reports.forEach(function (r) { rptIds[r.id] = true; });
+    (incoming.reports || []).forEach(function (r) {
+      if (r && r.id && !rptIds[r.id]) { state.reports.push(r); rptIds[r.id] = true; addedReports++; }
+    });
+
     (incoming.teachers || []).forEach(function (t) {
       if (t && state.teachers.indexOf(t) === -1) state.teachers.push(t);
     });
 
     var r = persist();
-    return r.ok ? { ok: true, added: { students: addedStudents, lessons: addedLessons, homeworks: addedHomeworks, counsels: addedCounsels, exams: addedExams, preps: addedPreps }, mode: 'merge' } : r;
+    return r.ok ? { ok: true, added: { students: addedStudents, lessons: addedLessons, homeworks: addedHomeworks, counsels: addedCounsels, exams: addedExams, preps: addedPreps, reports: addedReports }, mode: 'merge' } : r;
   }
 
   /** 전체 초기화 — 화면에서 두 번 확인한 뒤에만 호출된다 */
@@ -1264,6 +1422,15 @@
     savePrep: savePrep,
     savePrepChecklist: savePrepChecklist,
     examDday: examDday,
+    REPORT_STATUS: REPORT_STATUS,
+    monthRange: monthRange,
+    thisMonth: thisMonth,
+    getReports: getReports,
+    getReport: getReport,
+    findReport: findReport,
+    saveReport: saveReport,
+    unlockReport: unlockReport,
+    setReportArchived: setReportArchived,
     prepProgress: prepProgress,
     diffDays: diffDays,
     dayOffset: dayOffset,

@@ -2,9 +2,9 @@
 const fs=require('fs'),vm=require('vm');
 const mem={};const localStorage={getItem:k=>k in mem?mem[k]:null,setItem:(k,v)=>{mem[k]=String(v)},removeItem:k=>{delete mem[k]}};
 const ctx={console,localStorage,Date,JSON,Math,Object,Array,String,Number,isNaN,parseInt};ctx.window=ctx;vm.createContext(ctx);
-for(const f of ['assets/js/store.js','assets/js/feedback.js','assets/js/homework.js','assets/js/counsel.js','assets/js/exam.js'])
+for(const f of ['assets/js/store.js','assets/js/feedback.js','assets/js/homework.js','assets/js/counsel.js','assets/js/exam.js','assets/js/report.js'])
   vm.runInContext(fs.readFileSync(require('path').join(__dirname,'..',f),'utf8'),ctx,{filename:f});
-const {Store,FeedbackEngine,HomeworkEngine,CounselEngine,ExamEngine}=ctx;
+const {Store,FeedbackEngine,HomeworkEngine,CounselEngine,ExamEngine,ReportEngine}=ctx;
 
 const s=Store.saveStudent({name:'홍길동'});
 const bad=new Set();
@@ -91,6 +91,34 @@ for(const u1 of ['todo','doing','done']){
     }
   }
 }
+
+// 월간 리포트: 기록이 있는 달 / 없는 달 / 일부만 있는 달
+const RP = Store.monthRange(Store.thisMonth());
+const RD = n => RP.month + '-' + String(n).padStart(2,'0');
+const rs = Store.saveStudent({ name:'리포트생', school:'정왕중', grade:'중3', className:'A반' }).id;
+const RSTU = Store.getStudent(rs);
+function rptScan(label, extra){
+  const r = ReportEngine.generate(RSTU, RP, Store.getSettings(), extra);
+  r.check.errors.forEach(e=>bad.add('리포트 오류['+label+'] '+e.token));
+  r.check.warnings.forEach(w=>bad.add('리포트['+label+'] '+w.token));
+}
+rptScan('빈 달');                                   // 기록이 하나도 없을 때
+Store.saveLesson({ studentId:rs, date:RD(3), teacher:'김선생',
+  input:{progress:'Lesson 5 본문 해석', understanding:'good', understandingNote:'', improve:'', homework:'', memo:''}});
+rptScan('수업만');
+Store.saveLesson({ studentId:rs, date:RD(6), teacher:'김선생',
+  input:{progress:'Lesson 5 본문 해석', understanding:'needs_work', understandingNote:'시제 실수', improve:'시제 반복 연습', homework:'', memo:''}});
+const RH = Store.saveHomework({ studentId:rs, date:RD(8), dueDate:RD(10), base:['워크북 p.10~15','단어 암기'], extra:[] });
+Store.setHomeworkItemDone(RH.id,'base',Store.getHomework(RH.id).base[0].id,true);
+Store.setTeacherCheck(RH.id,{checked:true,by:'김선생'});
+rptScan('수업+숙제');
+Store.saveCounsel({ studentId:rs, date:RD(12), counselor:'김선생', target:'parent', type:'grade',
+  content:'성적 이야기를 나눴습니다.', parentRequest:'단어 시험 요청', academyReply:'금요일 시험 진행',
+  nextCheckDate:RD(25), followUp:{needed:true,text:'2주 뒤 재확인'} });
+rptScan('전체');
+const REX = Store.saveExam({ school:'정왕중', grade:'중3', term:'2학기 중간고사',
+  examDate: Store.dayOffset(20), units:['Lesson 7'], grammarPoints:['수동태'] });
+rptScan('전체+시험', { upcomingExam: Store.getExam(REX.id) });
 
 if(bad.size){ console.log('오탐 '+bad.size+'건:'); [...bad].forEach(b=>console.log('  · '+b)); process.exit(1); }
 console.log('오탐 없음 — 모든 고정 문구가 검증기를 통과합니다');
