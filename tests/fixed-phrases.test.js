@@ -2,9 +2,9 @@
 const fs=require('fs'),vm=require('vm');
 const mem={};const localStorage={getItem:k=>k in mem?mem[k]:null,setItem:(k,v)=>{mem[k]=String(v)},removeItem:k=>{delete mem[k]}};
 const ctx={console,localStorage,Date,JSON,Math,Object,Array,String,Number,isNaN,parseInt};ctx.window=ctx;vm.createContext(ctx);
-for(const f of ['assets/js/store.js','assets/js/feedback.js','assets/js/homework.js'])
+for(const f of ['assets/js/store.js','assets/js/feedback.js','assets/js/homework.js','assets/js/counsel.js'])
   vm.runInContext(fs.readFileSync(require('path').join(__dirname,'..',f),'utf8'),ctx,{filename:f});
-const {Store,FeedbackEngine,HomeworkEngine}=ctx;
+const {Store,FeedbackEngine,HomeworkEngine,CounselEngine}=ctx;
 
 const s=Store.saveStudent({name:'홍길동'});
 const bad=new Set();
@@ -40,6 +40,24 @@ for(const done of [0,1,2]){
       const v=HomeworkEngine.verifyMessage(msg,hw);
       v.errors.forEach(e=>bad.add('숙제 오류 '+e.token));
       v.warnings.forEach(w=>bad.add('숙제[완료'+done+'/확인'+checked+'/제출'+(due?'O':'X')+'] '+w.token));
+    }
+  }
+}
+
+// 상담 요약: 유형·대상·항목 유무 전 조합
+for(const type of Store.COUNSEL_TYPES.map(t=>t.code)){
+  for(const target of Store.COUNSEL_TARGETS.map(t=>t.code)){
+    for(const filled of [true,false]){
+      const C=Store.saveCounsel({studentId:s.id,date:Store.todayStr(),target,type,
+        content:'어머니와 전화로 이야기를 나눴습니다. 집에서 공부하는 시간이 짧다고 하셨습니다.',
+        parentRequest: filled?'단어 시험을 매주 봐 주세요':'',
+        academyReply: filled?'금요일마다 시험을 보기로 했습니다':'',
+        followUp: filled?{needed:true,text:'2주 뒤 결과를 정리해 다시 연락'}:{needed:false,text:''}});
+      const rec=Store.getCounsel(C.id);
+      const lines=CounselEngine.summarizeRuleBased(rec);
+      const v=CounselEngine.verifySummary(lines,rec);
+      v.errors.forEach(e=>bad.add('상담 오류 '+e.token));
+      v.warnings.forEach(w=>bad.add('상담['+type+'/'+target+'/'+(filled?'전체':'최소')+'] '+w.token));
     }
   }
 }

@@ -25,7 +25,8 @@
     teachers: [],
     students: [],
     lessons: [],
-    homeworks: []
+    homeworks: [],
+    counsels: []
   };
 
   /** 이해도 5단계 정의 — 화면 표시와 고정 문장을 한 곳에서 관리 */
@@ -35,6 +36,26 @@
     { code: 'average',    label: '보통',      short: '보통',     order: 3 },
     { code: 'needs_work', label: '보완 필요', short: '보완필요', order: 2 },
     { code: 'weak',       label: '많이 부족', short: '부족',     order: 1 }
+  ];
+
+  /** 상담 대상 */
+  var COUNSEL_TARGETS = [
+    { code: 'parent',  label: '학부모' },
+    { code: 'student', label: '학생' },
+    { code: 'both',    label: '학부모+학생' },
+    { code: 'other',   label: '기타' }
+  ];
+
+  /** 상담 유형 */
+  var COUNSEL_TYPES = [
+    { code: 'regular',    label: '정기 상담' },
+    { code: 'grade',      label: '성적 상담' },
+    { code: 'career',     label: '진학·진로' },
+    { code: 'attitude',   label: '학습 태도' },
+    { code: 'attendance', label: '출결' },
+    { code: 'request',    label: '학부모 요청' },
+    { code: 'complaint',  label: '불만·건의' },
+    { code: 'other',      label: '기타' }
   ];
 
   var FEEDBACK_STATUS = {
@@ -133,6 +154,7 @@
     s.lessons = Array.isArray(s.lessons) ? s.lessons : [];
     s.teachers = Array.isArray(s.teachers) ? s.teachers : [];
     s.homeworks = Array.isArray(s.homeworks) ? s.homeworks : [];
+    s.counsels = Array.isArray(s.counsels) ? s.counsels : [];
     s.students.forEach(normalizeStudent);
     return s;
   }
@@ -607,6 +629,219 @@
     return persist();
   }
 
+  // ────────────────────────────── 상담 기록 ──────────────────────────────
+
+  /**
+   * 상담 기록은 "원문"과 "요약"을 끝까지 분리해 보관한다.
+   *  - content : 선생님이 적은 상담 내용 원문. 프로그램이 절대 고치지 않는다.
+   *  - summary : AI(또는 규칙)가 만든 3~5줄 요약. 따로 저장되고 따로 수정된다.
+   * 원문이 항상 남아 있어야 나중에 "실제로 무슨 이야기가 오갔는지" 확인할 수 있다.
+   */
+
+  function emptySummary() {
+    return { text: '', lines: [], engine: '', generatedAt: '', edited: false };
+  }
+
+  function emptyFollowUp() {
+    return { needed: false, text: '', done: false, doneAt: '' };
+  }
+
+  /** 수정 이력에 남길 항목 (기능 6 — 수정일 기록) */
+  var COUNSEL_TRACKED = [
+    { key: 'date', label: '상담일' },
+    { key: 'target', label: '상담 대상' },
+    { key: 'type', label: '상담 유형' },
+    { key: 'counselor', label: '상담 교사' },
+    { key: 'content', label: '상담 내용' },
+    { key: 'parentRequest', label: '학부모 요청사항' },
+    { key: 'academyReply', label: '학원 답변' },
+    { key: 'nextCheckDate', label: '다음 확인일' }
+  ];
+
+  function getCounsels(filter) {
+    filter = filter || {};
+    var list = load().counsels.slice();
+    if (!filter.includeArchived) list = list.filter(function (c) { return !c.archived; });
+    if (filter.studentId) list = list.filter(function (c) { return c.studentId === filter.studentId; });
+    if (filter.type) list = list.filter(function (c) { return c.type === filter.type; });
+    if (filter.target) list = list.filter(function (c) { return c.target === filter.target; });
+    if (filter.followUp === true) {
+      list = list.filter(function (c) { return c.followUp && c.followUp.needed && !c.followUp.done; });
+    }
+    if (filter.dueWithin != null) {
+      var limit = dayOffset(filter.dueWithin);
+      list = list.filter(function (c) {
+        return c.nextCheckDate && c.nextCheckDate <= limit &&
+               !(c.followUp && c.followUp.needed && c.followUp.done);
+      });
+    }
+    if (filter.keyword) {
+      var kw = String(filter.keyword).trim().toLowerCase();
+      list = list.filter(function (c) {
+        return [c.studentName, c.counselor, c.content, c.parentRequest, c.academyReply,
+                c.followUp && c.followUp.text].join(' ').toLowerCase().indexOf(kw) !== -1;
+      });
+    }
+    // 기능 2 — 최신 상담이 항상 먼저
+    return list.sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return (a.createdAt < b.createdAt) ? 1 : -1;
+    });
+  }
+
+  function getCounsel(id) {
+    var found = load().counsels.filter(function (c) { return c.id === id; })[0];
+    return found ? clone(found) : null;
+  }
+
+  function dayOffset(days) {
+    var d = new Date();
+    d.setDate(d.getDate() + Number(days || 0));
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+
+  /**
+   * 다음 확인일이 다가온(또는 지난) 상담 (기능 5).
+   * 후속조치를 이미 끝낸 건은 빼고 보여 준다.
+   */
+  function getUpcomingChecks(days) {
+    var within = days == null ? 3 : days;
+    var today = todayStr();
+    return getCounsels({ dueWithin: within }).map(function (c) {
+      return Object.assign({}, c, { overdue: c.nextCheckDate < today, dday: diffDays(today, c.nextCheckDate) });
+    }).sort(function (a, b) { return a.nextCheckDate < b.nextCheckDate ? -1 : 1; });  // 임박한 순
+  }
+
+  function diffDays(from, to) {
+    var a = new Date(from + 'T00:00:00');
+    var b = new Date(to + 'T00:00:00');
+    return Math.round((b - a) / 86400000);
+  }
+
+  function saveCounsel(data) {
+    load();
+    var studentId = String(data.studentId || '').trim();
+    var student = state.students.filter(function (s) { return s.id === studentId; })[0];
+    if (!student) return { ok: false, error: '학생을 선택해 주세요.' };
+    if (!data.date) return { ok: false, error: '상담일을 입력해 주세요.' };
+    if (!String(data.content || '').trim()) return { ok: false, error: '상담 내용을 입력해 주세요.' };
+    if (data.nextCheckDate && data.nextCheckDate < data.date) {
+      return { ok: false, error: '다음 확인일이 상담일보다 앞설 수 없습니다.' };
+    }
+
+    var fields = {
+      studentId: studentId,
+      studentName: student.name,
+      className: String(data.className != null ? data.className : student.className || '').trim(),
+      date: data.date,
+      target: String(data.target || 'parent').trim(),
+      type: String(data.type || 'regular').trim(),
+      counselor: String(data.counselor || student.teacher || '').trim(),
+      content: String(data.content || '').trim(),
+      parentRequest: String(data.parentRequest || '').trim(),
+      academyReply: String(data.academyReply || '').trim(),
+      nextCheckDate: data.nextCheckDate || ''
+    };
+
+    if (data.id) {
+      var idx = -1;
+      state.counsels.forEach(function (c, i) { if (c.id === data.id) idx = i; });
+      if (idx === -1) return { ok: false, error: '해당 상담 기록을 찾을 수 없습니다.' };
+      var cur = state.counsels[idx];
+
+      // 무엇이 언제 바뀌었는지 남긴다 (기능 6)
+      var changed = COUNSEL_TRACKED.filter(function (f) {
+        return String(cur[f.key] || '') !== String(fields[f.key] || '');
+      }).map(function (f) { return f.label; });
+
+      var followUp = Object.assign({}, cur.followUp || emptyFollowUp());
+      if (data.followUp) {
+        var fuNeeded = !!data.followUp.needed;
+        var fuText = String(data.followUp.text || '').trim();
+        if (followUp.needed !== fuNeeded || followUp.text !== fuText) changed.push('후속조치');
+        followUp.needed = fuNeeded;
+        followUp.text = fuText;
+        if (!fuNeeded) { followUp.done = false; followUp.doneAt = ''; }
+      }
+
+      if (changed.length) {
+        cur.history = cur.history || [];
+        cur.history.push({ at: nowISO(), changed: changed });
+        if (cur.history.length > 50) cur.history = cur.history.slice(-50);
+      }
+
+      state.counsels[idx] = Object.assign({}, cur, fields, {
+        followUp: followUp,
+        updatedAt: changed.length ? nowISO() : cur.updatedAt
+      });
+      var r = persist();
+      return r.ok ? { ok: true, id: data.id, changed: changed } : r;
+    }
+
+    var record = Object.assign({
+      id: uid('cns')
+    }, fields, {
+      followUp: {
+        needed: !!(data.followUp && data.followUp.needed),
+        text: String((data.followUp && data.followUp.text) || '').trim(),
+        done: false, doneAt: ''
+      },
+      summary: emptySummary(),
+      history: [],
+      archived: false,
+      createdAt: nowISO(),
+      updatedAt: nowISO()
+    });
+    state.counsels.push(record);
+    var res = persist();
+    return res.ok ? { ok: true, id: record.id, changed: [] } : res;
+  }
+
+  /** AI 요약 저장 — 원문(content)은 절대 건드리지 않는다 */
+  function saveCounselSummary(id, payload) {
+    load();
+    var c = state.counsels.filter(function (x) { return x.id === id; })[0];
+    if (!c) return { ok: false, error: '해당 상담 기록을 찾을 수 없습니다.' };
+    payload = payload || {};
+    var lines = Array.isArray(payload.lines) ? payload.lines.map(function (l) { return String(l).trim(); }).filter(Boolean) : [];
+    c.summary = {
+      text: payload.text != null ? String(payload.text) : lines.join('\n'),
+      lines: lines,
+      engine: payload.engine || c.summary.engine || 'rule',
+      generatedAt: payload.generatedAt || nowISO(),
+      edited: !!payload.edited
+    };
+    if (payload.edited) {
+      c.history = c.history || [];
+      c.history.push({ at: nowISO(), changed: ['AI 요약'] });
+    }
+    c.updatedAt = nowISO();
+    return persist();
+  }
+
+  /** 후속조치 완료 표시 */
+  function setFollowUpDone(id, done) {
+    load();
+    var c = state.counsels.filter(function (x) { return x.id === id; })[0];
+    if (!c) return { ok: false, error: '해당 상담 기록을 찾을 수 없습니다.' };
+    if (!c.followUp || !c.followUp.needed) return { ok: false, error: '이 상담은 후속조치가 필요한 기록이 아닙니다.' };
+    c.followUp.done = !!done;
+    c.followUp.doneAt = done ? nowISO() : '';
+    c.history = c.history || [];
+    c.history.push({ at: nowISO(), changed: [done ? '후속조치 완료' : '후속조치 완료 해제'] });
+    c.updatedAt = nowISO();
+    return persist();
+  }
+
+  function setCounselArchived(id, archived) {
+    load();
+    var c = state.counsels.filter(function (x) { return x.id === id; })[0];
+    if (!c) return { ok: false, error: '해당 상담 기록을 찾을 수 없습니다.' };
+    c.archived = !!archived;
+    c.updatedAt = nowISO();
+    return persist();
+  }
+
   // ────────────────────────────── 통계 ──────────────────────────────
 
   function getStats() {
@@ -614,8 +849,12 @@
     var today = todayStr();
     var active = s.lessons.filter(function (l) { return !l.archived; });
     var hw = s.homeworks.filter(function (h) { return !h.archived; });
+    var cns = s.counsels.filter(function (c) { return !c.archived; });
     var hwToday = hw.filter(function (h) { return h.date === today; });
     return {
+      counselsTotal: cns.length,
+      counselsFollowUp: cns.filter(function (c) { return c.followUp && c.followUp.needed && !c.followUp.done; }).length,
+      counselsDueSoon: getUpcomingChecks(3).length,
       homeworksTotal: hw.length,
       homeworksToday: hwToday.length,
       homeworksUnchecked: hw.filter(function (h) { return !(h.teacherCheck && h.teacherCheck.checked); }).length,
@@ -648,7 +887,7 @@
     if (mode === 'replace') {
       state = migrate(mergeDefaults(DEFAULT_STATE, incoming));
       var r0 = persist();
-      return r0.ok ? { ok: true, added: { students: state.students.length, lessons: state.lessons.length, homeworks: state.homeworks.length }, mode: 'replace' } : r0;
+      return r0.ok ? { ok: true, added: { students: state.students.length, lessons: state.lessons.length, homeworks: state.homeworks.length, counsels: state.counsels.length }, mode: 'replace' } : r0;
     }
 
     var addedStudents = 0, addedLessons = 0;
@@ -671,12 +910,19 @@
       if (h && h.id && !hwIds[h.id]) { state.homeworks.push(h); hwIds[h.id] = true; addedHomeworks++; }
     });
 
+    var addedCounsels = 0;
+    var cnsIds = {};
+    state.counsels.forEach(function (c) { cnsIds[c.id] = true; });
+    (incoming.counsels || []).forEach(function (c) {
+      if (c && c.id && !cnsIds[c.id]) { state.counsels.push(c); cnsIds[c.id] = true; addedCounsels++; }
+    });
+
     (incoming.teachers || []).forEach(function (t) {
       if (t && state.teachers.indexOf(t) === -1) state.teachers.push(t);
     });
 
     var r = persist();
-    return r.ok ? { ok: true, added: { students: addedStudents, lessons: addedLessons, homeworks: addedHomeworks }, mode: 'merge' } : r;
+    return r.ok ? { ok: true, added: { students: addedStudents, lessons: addedLessons, homeworks: addedHomeworks, counsels: addedCounsels }, mode: 'merge' } : r;
   }
 
   /** 전체 초기화 — 화면에서 두 번 확인한 뒤에만 호출된다 */
@@ -689,6 +935,7 @@
   global.Store = {
     STORAGE_KEY: STORAGE_KEY,
     UNDERSTANDING_LEVELS: UNDERSTANDING_LEVELS,
+    COUNSEL_TRACKED: COUNSEL_TRACKED,
     FEEDBACK_STATUS: FEEDBACK_STATUS,
     available: available,
     load: load,
@@ -721,6 +968,17 @@
     saveHomeworkMessage: saveHomeworkMessage,
     setHomeworkArchived: setHomeworkArchived,
     summarize: summarize,
+    COUNSEL_TARGETS: COUNSEL_TARGETS,
+    COUNSEL_TYPES: COUNSEL_TYPES,
+    getCounsels: getCounsels,
+    getCounsel: getCounsel,
+    saveCounsel: saveCounsel,
+    saveCounselSummary: saveCounselSummary,
+    setFollowUpDone: setFollowUpDone,
+    setCounselArchived: setCounselArchived,
+    getUpcomingChecks: getUpcomingChecks,
+    diffDays: diffDays,
+    dayOffset: dayOffset,
     getStats: getStats,
     exportJSON: exportJSON,
     importJSON: importJSON,

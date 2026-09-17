@@ -43,15 +43,14 @@
   }
 
   /**
-   * 피드백 5개 문단을 AI로 생성한다.
-   * @returns Promise<{today,state,improve,homework,notice}>
+   * 지시문을 보내 JSON 응답을 받아 온다. (피드백·상담 요약이 함께 쓴다)
+   * @returns Promise<object>
    */
-  function generate(lesson, settings) {
+  function callJSON(prompt, settings, maxTokens) {
     var ai = (settings && settings.ai) || {};
-    var prompt = global.FeedbackEngine.buildAIPrompt(lesson, settings);
     var body = {
       model: String(ai.model || '').trim() || DEFAULT_MODEL,
-      max_tokens: 1200,
+      max_tokens: maxTokens || 1200,
       temperature: 0,          // 매번 같은 결과가 나오도록 (임의 창작 최소화)
       system: prompt.system,
       messages: [{ role: 'user', content: prompt.user }]
@@ -90,8 +89,16 @@
           return data;
         });
       })
-      .then(function (data) {
-        var parsed = extractJSON(pickText(data));
+      .then(function (data) { return extractJSON(pickText(data)); });
+  }
+
+  /**
+   * 피드백 5개 문단을 AI로 생성한다.
+   * @returns Promise<{today,state,improve,homework,notice}>
+   */
+  function generate(lesson, settings) {
+    return callJSON(global.FeedbackEngine.buildAIPrompt(lesson, settings), settings, 1200)
+      .then(function (parsed) {
         return {
           today: String(parsed.today || '').trim(),
           state: String(parsed.state || '').trim(),
@@ -102,9 +109,24 @@
       });
   }
 
+  /**
+   * 상담 내용을 3~5줄로 요약한다.
+   * @returns Promise<string[]>
+   */
+  function summarizeCounsel(counsel, settings) {
+    return callJSON(global.CounselEngine.buildAIPrompt(counsel), settings, 800)
+      .then(function (parsed) {
+        var lines = Array.isArray(parsed.lines) ? parsed.lines
+                  : (parsed.summary ? String(parsed.summary).split('\n') : []);
+        return global.CounselEngine.clampLines(lines.map(function (l) { return String(l).trim(); }));
+      });
+  }
+
   global.AIClient = {
     DEFAULT_MODEL: DEFAULT_MODEL,
     isConfigured: isConfigured,
-    generate: generate
+    callJSON: callJSON,
+    generate: generate,
+    summarizeCounsel: summarizeCounsel
   };
 })(window);

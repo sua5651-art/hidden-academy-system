@@ -129,12 +129,30 @@
     html += '</div>';
 
     html += '<div class="btn-row">';
-    html += '<a class="btn" href="#/lesson/new">✏️ 새 수업 기록</a>';
+    html += '<a class="btn" href="#/lesson/new">✏️ 수업 기록</a>';
     html += '<a class="btn" href="#/homework/new">📚 숙제 배정</a>';
+    html += '<a class="btn" href="#/counsel/new">💬 상담 기록</a>';
     html += '</div>';
 
+    // 다음 확인일이 다가온 상담 (기능 5)
+    var due = Store.getUpcomingChecks(3);
+    if (due.length) {
+      html += '<div class="note note--warn" style="margin-top:14px"><b>📅 곧 확인할 상담 ' + due.length + '건</b><ul>';
+      html += due.slice(0, 4).map(function (c) {
+        var when = c.overdue ? '<b>' + (-c.dday) + '일 지남</b>' : (c.dday === 0 ? '<b>오늘</b>' : 'D-' + c.dday);
+        return '<li><a href="#/counsel/' + esc(c.id) + '">' + esc(c.studentName) + ' · ' +
+               esc(cnsTypeLabel(c.type)) + '</a> — ' + when + '</li>';
+      }).join('');
+      html += (due.length > 4 ? '<li><a href="#/counsels">전체 보기</a></li>' : '') + '</ul></div>';
+    }
+
+    if (st.counselsFollowUp) {
+      html += '<div class="note note--warn" style="margin-top:10px">후속조치가 남은 상담이 ' + st.counselsFollowUp +
+              '건 있습니다. <a href="#/counsels">상담 기록 보기</a></div>';
+    }
+
     if (st.homeworksUnchecked) {
-      html += '<div class="note note--warn" style="margin-top:14px">교사 확인이 남은 숙제가 ' + st.homeworksUnchecked +
+      html += '<div class="note note--warn" style="margin-top:10px">교사 확인이 남은 숙제가 ' + st.homeworksUnchecked +
               '건 있습니다. <a href="#/homeworks">숙제 화면에서 확인하기</a></div>';
     }
 
@@ -187,6 +205,8 @@
         var count = Store.getLessons({ studentId: s.id }).length;
         var defCount = (s.defaultHomework || []).length;
         if (defCount) meta += (meta ? ' · ' : '') + '기본 숙제 ' + defCount + '개';
+        var cCount = Store.getCounsels({ studentId: s.id }).length;
+        if (cCount) meta += (meta ? ' · ' : '') + '상담 ' + cCount + '건';
         return '<a class="list__item" href="#/student/' + esc(s.id) + '">' +
           '<div class="list__row"><span class="list__name">' + esc(s.name) + '</span>' +
           (s.archived ? '<span class="badge badge--archived">보관</span>' : '<span class="badge">기록 ' + count + '건</span>') + '</div>' +
@@ -245,6 +265,18 @@
       html += '<div class="note note--info" style="margin-top:12px">여기 등록한 숙제는 <b>숙제를 배정할 때 자동으로 채워집니다.</b><br>' +
               '그날그날 고친 내용은 이 기본 숙제를 바꾸지 않습니다.</div>';
       html += '</div>';
+
+      // 이 학생의 기록으로 바로 가기
+      var cnsCount = Store.getCounsels({ studentId: id }).length;
+      var hwCount = Store.getHomeworks({ studentId: id }).length;
+      var lesCount = Store.getLessons({ studentId: id }).length;
+      html += '<div class="card"><h3 class="card__title">이 학생의 기록</h3><div class="btn-row">';
+      html += '<a class="btn btn--ghost btn--sm" href="#/lessons">📋 수업 ' + lesCount + '건</a>';
+      html += '<a class="btn btn--ghost btn--sm" href="#/homeworks">📚 숙제 ' + hwCount + '건</a>';
+      html += '<a class="btn btn--ghost btn--sm" href="#/counsels?student=' + esc(id) + '">💬 상담 ' + cnsCount + '건</a>';
+      html += '</div><div class="btn-row" style="margin-top:8px">';
+      html += '<a class="btn btn--sm" href="#/counsel/new?student=' + esc(id) + '">＋ 상담 기록 작성</a>';
+      html += '</div></div>';
 
       html += '<div class="note note--info" style="margin-top:16px">학생 정보는 삭제되지 않습니다. 더 이상 다니지 않는 학생은 <b>보관</b> 처리하면 목록에서만 숨겨지고 기록은 그대로 남습니다.</div>';
       html += '<button class="btn btn--ghost btn--block" id="archiveBtn">' + (s.archived ? '보관 해제하기' : '이 학생 보관하기') + '</button>';
@@ -1081,6 +1113,340 @@
     });
   }
 
+  // ───────────────────────── 상담 기록 ─────────────────────────
+
+  function cnsTargetLabel(code) { return CounselEngine.targetLabel(code); }
+  function cnsTypeLabel(code) { return CounselEngine.typeLabel(code); }
+
+  /** 후속조치·확인일 상태를 배지로 (기능 4·5) */
+  function counselBadges(c) {
+    var html = '<span class="badge">' + esc(cnsTypeLabel(c.type)) + '</span>';
+    var fu = c.followUp || {};
+    if (fu.needed && !fu.done) html += ' <span class="badge badge--edited">후속조치 필요</span>';
+    else if (fu.needed && fu.done) html += ' <span class="badge badge--final">후속조치 완료</span>';
+    if (c.nextCheckDate && !(fu.needed && fu.done)) {
+      var d = Store.diffDays(Store.todayStr(), c.nextCheckDate);
+      if (d < 0) html += ' <span class="badge badge--archived">확인일 ' + (-d) + '일 지남</span>';
+      else if (d === 0) html += ' <span class="badge badge--archived">오늘 확인</span>';
+      else if (d <= 3) html += ' <span class="badge badge--edited">D-' + d + '</span>';
+    }
+    return html;
+  }
+
+  function counselItemHTML(c) {
+    var meta = [c.date, c.className, cnsTargetLabel(c.target), c.counselor].filter(Boolean).join(' · ');
+    var excerpt = (c.summary && c.summary.text) ? c.summary.text.replace(/\n/g, ' ') : c.content;
+    return '<a class="list__item" href="#/counsel/' + esc(c.id) + '">' +
+      '<div class="list__row"><span class="list__name">' + esc(c.studentName) + '</span>' +
+      (c.summary && c.summary.text ? '<span class="badge badge--generated">요약 있음</span>' : '') + '</div>' +
+      '<div class="list__meta">' + esc(meta) + '</div>' +
+      '<div style="margin:6px 0 2px">' + counselBadges(c) + '</div>' +
+      '<div class="list__excerpt">' + esc(excerpt) + '</div>' +
+    '</a>';
+  }
+
+  // ── 상담 목록 (기능 1·2) ──
+  var cnsFilter = { studentId: '', type: '', followUp: false, dueWithin: null, keyword: '' };
+
+  function renderCounsels() {
+    var students = Store.getStudents({ includeArchived: true });
+    var filter = { keyword: cnsFilter.keyword };
+    if (cnsFilter.studentId) filter.studentId = cnsFilter.studentId;
+    if (cnsFilter.type) filter.type = cnsFilter.type;
+    if (cnsFilter.followUp) filter.followUp = true;
+    if (cnsFilter.dueWithin != null) filter.dueWithin = cnsFilter.dueWithin;
+    var list = Store.getCounsels(filter);
+    var stats = Store.getStats();
+
+    var who = cnsFilter.studentId ? (Store.getStudent(cnsFilter.studentId) || {}).name : '';
+    setHeader('상담 기록', who ? who + ' 학생' : '', !!cnsFilter.studentId);
+
+    var html = '';
+    html += '<div class="stats" style="grid-template-columns:repeat(3,1fr)">';
+    html += '<div class="stat"><span class="stat__num">' + stats.counselsTotal + '</span><span class="stat__label">전체 상담</span></div>';
+    html += '<div class="stat ' + (stats.counselsFollowUp ? 'stat--alert' : '') + '"><span class="stat__num">' + stats.counselsFollowUp + '</span><span class="stat__label">후속조치 필요</span></div>';
+    html += '<div class="stat ' + (stats.counselsDueSoon ? 'stat--alert' : '') + '"><span class="stat__num">' + stats.counselsDueSoon + '</span><span class="stat__label">확인일 임박</span></div>';
+    html += '</div>';
+
+    html += '<a class="btn btn--block" href="#/counsel/new' + (cnsFilter.studentId ? '?student=' + esc(cnsFilter.studentId) : '') + '">＋ 상담 기록 작성</a>';
+
+    html += '<div class="filters" style="margin-top:16px">';
+    html += '<select id="cnsStudent"><option value="">전체 학생</option>' + students.map(function (st) {
+      return '<option value="' + esc(st.id) + '"' + (cnsFilter.studentId === st.id ? ' selected' : '') + '>' + esc(st.name) + '</option>';
+    }).join('') + '</select>';
+    html += '<select id="cnsType"><option value="">전체 유형</option>' + Store.COUNSEL_TYPES.map(function (t) {
+      return '<option value="' + esc(t.code) + '"' + (cnsFilter.type === t.code ? ' selected' : '') + '>' + esc(t.label) + '</option>';
+    }).join('') + '</select>';
+    html += '<div class="full"><input type="search" id="cnsKeyword" placeholder="상담 내용·요청사항으로 검색" value="' + esc(cnsFilter.keyword) + '"></div>';
+    html += '</div>';
+
+    html += '<div class="chip-row" style="margin-bottom:14px">';
+    html += '<button class="btn btn--sm ' + (cnsFilter.followUp ? '' : 'btn--ghost') + '" id="cnsFollowBtn">후속조치 필요만</button>';
+    html += '<button class="btn btn--sm ' + (cnsFilter.dueWithin != null ? '' : 'btn--ghost') + '" id="cnsDueBtn">확인일 임박만</button>';
+    html += '</div>';
+
+    if (!list.length) {
+      html += '<div class="empty"><span class="empty__icon">💬</span>조건에 맞는 상담 기록이 없습니다.</div>';
+    } else {
+      html += '<div class="list__meta" style="margin-bottom:8px">' + list.length + '건 · 최신순</div>';
+      html += '<ul class="list">' + list.map(counselItemHTML).join('') + '</ul>';
+    }
+    view.innerHTML = html;
+
+    $('#cnsStudent').addEventListener('change', function (e) { cnsFilter.studentId = e.target.value; renderCounsels(); });
+    $('#cnsType').addEventListener('change', function (e) { cnsFilter.type = e.target.value; renderCounsels(); });
+    $('#cnsFollowBtn').addEventListener('click', function () { cnsFilter.followUp = !cnsFilter.followUp; renderCounsels(); });
+    $('#cnsDueBtn').addEventListener('click', function () { cnsFilter.dueWithin = cnsFilter.dueWithin == null ? 3 : null; renderCounsels(); });
+    var kw = $('#cnsKeyword');
+    kw.addEventListener('input', function () {
+      cnsFilter.keyword = kw.value;
+      var pos = kw.selectionStart;
+      renderCounsels();
+      var k2 = $('#cnsKeyword'); k2.focus();
+      try { k2.setSelectionRange(pos, pos); } catch (e) {}
+    });
+  }
+
+  // ── 상담 작성 / 수정 ──
+  function renderCounselForm(id, presetStudentId) {
+    var isNew = !id;
+    var c = isNew ? null : Store.getCounsel(id);
+    if (!isNew && !c) { toast('상담 기록을 찾을 수 없습니다.', 'err'); return go('#/counsels'); }
+
+    var students = Store.getStudents();
+    if (!students.length) {
+      setHeader('상담 기록', '', true);
+      view.innerHTML = '<div class="empty"><span class="empty__icon">👥</span>먼저 학생을 등록해야 상담을 기록할 수 있습니다.</div>' +
+                       '<a class="btn btn--block" href="#/student/new">＋ 학생 추가하러 가기</a>';
+      return;
+    }
+
+    setHeader(isNew ? '상담 기록 작성' : '상담 기록 수정', '', true);
+    var teachers = Store.getTeachers();
+    var curStudent = c ? c.studentId : (presetStudentId || '');
+    var fu = (c && c.followUp) || { needed: false, text: '' };
+
+    var html = '<form id="cnsForm"><div class="card">';
+
+    html += field('학생', '<select name="studentId" id="cnsStudentSel" required><option value="">— 학생 선택 —</option>' +
+      students.map(function (st) {
+        var meta = [st.className, st.grade].filter(Boolean).join(' ');
+        return '<option value="' + esc(st.id) + '"' + (curStudent === st.id ? ' selected' : '') + '>' +
+          esc(st.name) + (meta ? ' (' + esc(meta) + ')' : '') + '</option>';
+      }).join('') + '</select>', true);
+
+    html += '<div class="filters">';
+    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">상담일<span class="req">*</span></label>' +
+            '<input type="date" name="date" value="' + esc(c ? c.date : Store.todayStr()) + '" required></div>';
+    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">상담 교사</label>' +
+            '<input type="text" name="counselor" id="cnsCounselor" value="' + esc(c ? c.counselor : '') + '" list="cnsTeacherList" placeholder="자동 입력">' +
+            '<datalist id="cnsTeacherList">' + teachers.map(function (t) { return '<option value="' + esc(t) + '">'; }).join('') + '</datalist></div>';
+    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">상담 대상<span class="req">*</span></label>' +
+            '<select name="target">' + Store.COUNSEL_TARGETS.map(function (t) {
+              return '<option value="' + esc(t.code) + '"' + ((c ? c.target : 'parent') === t.code ? ' selected' : '') + '>' + esc(t.label) + '</option>';
+            }).join('') + '</select></div>';
+    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">상담 유형<span class="req">*</span></label>' +
+            '<select name="type">' + Store.COUNSEL_TYPES.map(function (t) {
+              return '<option value="' + esc(t.code) + '"' + ((c ? c.type : 'regular') === t.code ? ' selected' : '') + '>' + esc(t.label) + '</option>';
+            }).join('') + '</select></div>';
+    html += '</div></div>';
+
+    html += '<div class="card">';
+    html += field('상담 내용 (원문)',
+      '<textarea name="content" required placeholder="오간 이야기를 그대로 적어 주세요. 요약은 따로 만들어 줍니다.">' + esc(c ? c.content : '') + '</textarea>',
+      true, '여기 적은 원문은 요약을 다시 만들어도 절대 바뀌지 않습니다.');
+    html += field('학부모 요청사항',
+      '<textarea name="parentRequest" placeholder="예: 단어 시험을 매주 봐 주셨으면 합니다">' + esc(c ? c.parentRequest : '') + '</textarea>');
+    html += field('학원 답변',
+      '<textarea name="academyReply" placeholder="예: 다음 주부터 매주 금요일 단어 시험 진행하기로 안내">' + esc(c ? c.academyReply : '') + '</textarea>');
+    html += '</div>';
+
+    html += '<div class="card"><h3 class="card__title">후속조치 · 다음 확인일</h3>';
+    html += '<label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:14px;font-weight:600">' +
+            '<input type="checkbox" name="followUpNeeded" id="fuNeeded" style="width:auto"' + (fu.needed ? ' checked' : '') + '> 후속조치가 필요합니다</label>';
+    html += '<div id="fuBox"' + (fu.needed ? '' : ' hidden') + '>';
+    html += field('후속조치 내용', '<textarea name="followUpText" placeholder="예: 2주 뒤 단어 시험 결과 정리해서 다시 연락">' + esc(fu.text || '') + '</textarea>');
+    html += '</div>';
+    html += field('다음 확인일', '<input type="date" name="nextCheckDate" value="' + esc(c ? c.nextCheckDate : '') + '">',
+      false, '이 날짜가 다가오면 홈 화면에 표시됩니다.');
+    html += '</div>';
+
+    html += '<div class="btn-row"><button type="submit" class="btn btn--block">' + (isNew ? '저장하기' : '수정 내용 저장') + '</button></div>';
+    html += '</form>';
+    view.innerHTML = html;
+
+    // 학생을 고르면 담당 교사를 자동으로 채운다
+    $('#cnsStudentSel').addEventListener('change', function (e) {
+      var st = Store.getStudent(e.target.value);
+      if (st && st.teacher && !$('#cnsCounselor').value.trim()) $('#cnsCounselor').value = st.teacher;
+    });
+    if (isNew && curStudent) {
+      var st0 = Store.getStudent(curStudent);
+      if (st0 && st0.teacher) $('#cnsCounselor').value = st0.teacher;
+    }
+
+    $('#fuNeeded').addEventListener('change', function (e) { $('#fuBox').hidden = !e.target.checked; });
+
+    $('#cnsForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var fd = new FormData(e.target);
+      var r = Store.saveCounsel({
+        id: isNew ? null : id,
+        studentId: fd.get('studentId'),
+        date: fd.get('date'),
+        counselor: fd.get('counselor'),
+        target: fd.get('target'),
+        type: fd.get('type'),
+        content: fd.get('content'),
+        parentRequest: fd.get('parentRequest'),
+        academyReply: fd.get('academyReply'),
+        nextCheckDate: fd.get('nextCheckDate'),
+        followUp: { needed: !!fd.get('followUpNeeded'), text: fd.get('followUpText') }
+      });
+      if (!r.ok) return toast(r.error, 'err');
+      toast(isNew ? '상담 기록을 저장했습니다.' : (r.changed.length ? '수정했습니다 — ' + r.changed.join(', ') : '바뀐 내용이 없습니다.'), 'ok');
+      go('#/counsel/' + r.id);
+    });
+  }
+
+  // ── 상담 상세 (원문 + 요약 + 후속조치 + 수정 이력) ──
+  function renderCounselDetail(id) {
+    var c = Store.getCounsel(id);
+    if (!c) { toast('상담 기록을 찾을 수 없습니다.', 'err'); return go('#/counsels'); }
+    var settings = Store.getSettings();
+    var fu = c.followUp || {};
+    setHeader(c.studentName + ' 상담', FeedbackEngine.formatDate(c.date), true);
+
+    var html = '';
+
+    html += '<div class="card"><h3 class="card__title">상담 개요</h3>';
+    html += '<div style="margin-bottom:12px">' + counselBadges(c) + '</div>';
+    html += '<dl class="kv">';
+    html += '<dt>상담일</dt><dd>' + esc(FeedbackEngine.formatDate(c.date)) + '</dd>';
+    html += '<dt>상담 대상</dt><dd>' + esc(cnsTargetLabel(c.target)) + '</dd>';
+    html += '<dt>상담 유형</dt><dd>' + esc(cnsTypeLabel(c.type)) + '</dd>';
+    html += '<dt>상담 교사</dt><dd>' + esc(c.counselor || '-') + '</dd>';
+    html += '<dt>다음 확인일</dt><dd>' + (c.nextCheckDate ? esc(FeedbackEngine.formatDate(c.nextCheckDate)) : '지정 안 함') + '</dd>';
+    html += '</dl>';
+    html += '<div class="btn-row" style="margin-top:12px">';
+    html += '<a class="btn btn--ghost btn--sm" href="#/counsel/' + esc(id) + '/edit">기록 수정</a>';
+    html += '<a class="btn btn--ghost btn--sm" href="#/counsels?student=' + esc(c.studentId) + '">이 학생 상담 기록</a>';
+    html += '</div></div>';
+
+    // AI 요약 — 원문과 별도 필드
+    html += '<h2 class="section-title">상담 요약 <small style="font-weight:400">3~5줄</small></h2>';
+    html += '<div id="cnsWarnArea"></div>';
+    html += '<div class="card">';
+    html += '<textarea id="cnsSummary" placeholder="아래 버튼을 눌러 요약을 만들어 주세요.">' + esc((c.summary && c.summary.text) || '') + '</textarea>';
+    if (c.summary && c.summary.generatedAt) {
+      html += '<div class="list__meta" style="margin-top:6px">' +
+        (c.summary.engine === 'ai' ? 'AI' : '규칙 기반') + ' · ' +
+        esc(new Date(c.summary.generatedAt).toLocaleString('ko-KR')) +
+        (c.summary.edited ? ' · 직접 수정함' : '') + '</div>';
+    }
+    html += '<div class="btn-row" style="margin-top:12px">';
+    html += '<button class="btn" id="cnsGenBtn">🤖 요약 만들기</button>';
+    html += '<button class="btn btn--ghost" id="cnsSaveSummaryBtn">요약 저장</button>';
+    html += '</div></div>';
+
+    // 원문 — 절대 바뀌지 않음
+    html += '<h2 class="section-title">상담 내용 원문 <small style="font-weight:400">요약을 다시 만들어도 바뀌지 않습니다</small></h2>';
+    html += '<div class="fb-preview">' + esc(c.content) + '</div>';
+
+    if (c.parentRequest || c.academyReply) {
+      html += '<div class="card" style="margin-top:14px">';
+      if (c.parentRequest) html += '<h3 class="card__title">학부모 요청사항</h3><div class="fb-preview" style="margin-bottom:14px">' + esc(c.parentRequest) + '</div>';
+      if (c.academyReply) html += '<h3 class="card__title">학원 답변</h3><div class="fb-preview">' + esc(c.academyReply) + '</div>';
+      html += '</div>';
+    }
+
+    // 후속조치
+    if (fu.needed) {
+      html += '<div class="card"><h3 class="card__title">후속조치 ' +
+        (fu.done ? '<span class="badge badge--final">완료</span>' : '<span class="badge badge--edited">진행 필요</span>') + '</h3>';
+      html += '<div class="fb-preview" style="margin-bottom:12px">' + esc(fu.text || '(내용 없음)') + '</div>';
+      if (fu.done) {
+        html += '<div class="note note--ok">' + esc(new Date(fu.doneAt || Date.now()).toLocaleString('ko-KR')) + ' 완료 처리</div>';
+        html += '<button class="btn btn--ghost btn--block" id="fuUndoBtn">완료 표시 해제</button>';
+      } else {
+        html += '<button class="btn btn--ok btn--block" id="fuDoneBtn">✅ 후속조치 완료로 표시</button>';
+      }
+      html += '</div>';
+    }
+
+    // 작성·수정 이력 (기능 6)
+    html += '<div class="card"><h3 class="card__title">작성 · 수정 이력</h3><dl class="kv">';
+    html += '<dt>최초 작성</dt><dd>' + esc(new Date(c.createdAt).toLocaleString('ko-KR')) + '</dd>';
+    html += '<dt>마지막 수정</dt><dd>' + (c.updatedAt && c.updatedAt !== c.createdAt
+      ? esc(new Date(c.updatedAt).toLocaleString('ko-KR')) : '수정한 적 없음') + '</dd>';
+    html += '</dl>';
+    if (c.history && c.history.length) {
+      html += '<div style="margin-top:12px">' + c.history.slice().reverse().slice(0, 10).map(function (h) {
+        return '<div class="hw-item"><span class="hw-item__text"><b>' +
+          esc(new Date(h.at).toLocaleString('ko-KR')) + '</b><br><span style="color:var(--text-dim)">' +
+          esc((h.changed || []).join(', ')) + ' 수정</span></span></div>';
+      }).join('') + '</div>';
+    }
+    html += '</div>';
+
+    view.innerHTML = html;
+    bindAutoGrow(view);
+
+    $('#cnsGenBtn').addEventListener('click', function () {
+      var latest = Store.getCounsel(id);
+      var btn = $('#cnsGenBtn');
+      var useAI = settings.engine === 'ai' && AIClient.isConfigured(settings);
+
+      function apply(lines, engine) {
+        var text = CounselEngine.formatLines(lines);
+        $('#cnsSummary').value = text;
+        autoGrow($('#cnsSummary'));
+        var check = CounselEngine.verifySummary(lines, latest);
+        renderWarningsInto('#cnsWarnArea', engine === 'ai' ? check : { errors: [], warnings: check.warnings });
+        var r = Store.saveCounselSummary(id, { text: text, lines: lines, engine: engine });
+        if (!r.ok) return toast(r.error, 'err');
+        toast(lines.length + '줄로 요약했습니다.', 'ok');
+      }
+
+      if (!useAI) return apply(CounselEngine.summarizeRuleBased(latest), 'rule');
+
+      btn.disabled = true;
+      var prev = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner"></span> 요약하는 중…';
+      AIClient.summarizeCounsel(latest, settings)
+        .then(function (lines) { apply(lines, 'ai'); })
+        .catch(function (err) {
+          console.error(err);
+          toast('AI 요약 실패 — 규칙 기반으로 만들었습니다.', 'err');
+          apply(CounselEngine.summarizeRuleBased(latest), 'rule');
+        })
+        .then(function () { btn.disabled = false; btn.innerHTML = prev; });
+    });
+
+    $('#cnsSaveSummaryBtn').addEventListener('click', function () {
+      var text = $('#cnsSummary').value;
+      var lines = text.split('\n').map(function (l) { return l.replace(/^[-·*•]\s*/, '').trim(); }).filter(Boolean);
+      var r = Store.saveCounselSummary(id, { text: text, lines: lines, edited: true });
+      if (!r.ok) return toast(r.error, 'err');
+      renderWarningsInto('#cnsWarnArea', CounselEngine.verifySummary(lines, Store.getCounsel(id)));
+      toast('요약을 저장했습니다.', 'ok');
+    });
+
+    var fuDone = $('#fuDoneBtn');
+    if (fuDone) fuDone.addEventListener('click', function () {
+      var r = Store.setFollowUpDone(id, true);
+      if (!r.ok) return toast(r.error, 'err');
+      toast('후속조치를 완료로 표시했습니다.', 'ok');
+      renderCounselDetail(id);
+    });
+    var fuUndo = $('#fuUndoBtn');
+    if (fuUndo) fuUndo.addEventListener('click', function () {
+      var r = Store.setFollowUpDone(id, false);
+      if (!r.ok) return toast(r.error, 'err');
+      renderCounselDetail(id);
+    });
+  }
+
   // ───────────────────────── 설정 ─────────────────────────
 
   function renderSettings() {
@@ -1224,8 +1590,20 @@
   // ───────────────────────── 라우팅 ─────────────────────────
 
   function currentRoute() {
-    var h = (global.location.hash || '#/home').replace(/^#/, '');
+    var h = (global.location.hash || '#/home').replace(/^#/, '').split('?')[0];
     return h.split('/').filter(Boolean);
+  }
+
+  /** #/경로?key=value 형태의 값을 읽는다 */
+  function routeQuery(key) {
+    var h = (global.location.hash || '').split('?')[1];
+    if (!h) return '';
+    var found = '';
+    h.split('&').forEach(function (pair) {
+      var kv = pair.split('=');
+      if (decodeURIComponent(kv[0]) === key) found = decodeURIComponent(kv[1] || '');
+    });
+    return found;
   }
 
   function render() {
@@ -1248,6 +1626,15 @@
         case 'feedback':
           if (!p[1]) return go('#/lessons');
           renderFeedback(p[1]); setTab('lessons'); break;
+        case 'counsels':
+          cnsFilter.studentId = routeQuery('student') || cnsFilter.studentId;
+          renderCounsels(); setTab('students'); break;
+        case 'counsel':
+          if (p[1] === 'new') renderCounselForm(null, routeQuery('student'));
+          else if (p[2] === 'edit') renderCounselForm(p[1]);
+          else if (p[1]) renderCounselDetail(p[1]);
+          else return go('#/counsels');
+          setTab('students'); break;
         case 'homeworks': renderHomeworks(); setTab('homeworks'); break;
         case 'homework':
           if (p[1] === 'new') renderHomeworkForm(null);
