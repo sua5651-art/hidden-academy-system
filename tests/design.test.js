@@ -75,9 +75,23 @@ const NAVY = ['rgb(20, 49, 92)', 'rgb(11, 31, 61)'];   // --navy / --navy-dark
   const appbarBg = await page.evaluate(() => getComputedStyle(document.querySelector('.appbar')).backgroundColor);
   if (!NAVY.includes(appbarBg)) throw new Error('상단 바가 네이비가 아님: ' + appbarBg);
   pass('상단 바 ' + appbarBg);
-  const btnBg = await page.evaluate(() => getComputedStyle(document.querySelector('.btn:not(.btn--ghost)')).backgroundColor);
-  if (!NAVY.includes(btnBg)) throw new Error('주요 버튼이 네이비가 아님: ' + btnBg);
-  pass('주요 버튼 ' + btnBg);
+  await page.goto(base + '#/lesson/new');          // 실행 버튼(저장)이 있는 화면
+  await page.waitForSelector('#lessonForm');
+  const btnBg = await page.evaluate(() => getComputedStyle(document.querySelector('button[type="submit"].btn')).backgroundColor);
+  if (!NAVY.includes(btnBg)) throw new Error('실행 버튼이 네이비가 아님: ' + btnBg);
+  pass('실행 버튼 ' + btnBg);
+  await page.goto(base + '#/home');
+  await page.waitForSelector('.stats');
+  // 홈의 이동 버튼은 테두리형 — 흰 바탕에 네이비 글자
+  const navBtn = await page.evaluate(() => {
+    const b = document.querySelector('.btn-row .btn--ghost');
+    const cs = getComputedStyle(b);
+    return { bg: cs.backgroundColor, color: cs.color, border: cs.borderTopWidth };
+  });
+  if (navBtn.bg !== 'rgb(255, 255, 255)') throw new Error('홈 이동 버튼 바탕이 흰색이 아님: ' + navBtn.bg);
+  if (!NAVY.includes(navBtn.color)) throw new Error('홈 이동 버튼 글자가 네이비가 아님: ' + navBtn.color);
+  if (parseFloat(navBtn.border) < 1) throw new Error('홈 이동 버튼에 테두리가 없음');
+  pass('홈 이동 버튼 테두리형 (바탕 ' + navBtn.bg + ' · 글자 ' + navBtn.color + ')');
   const tabOn = await page.evaluate(() => getComputedStyle(document.querySelector('.tab[aria-current="page"]')).color);
   if (!NAVY.includes(tabOn)) throw new Error('선택된 탭이 네이비가 아님: ' + tabOn);
   pass('선택된 탭 ' + tabOn);

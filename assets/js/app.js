@@ -129,10 +129,12 @@
     html += '</div>';
 
     html += '<div class="btn-row">';
-    html += '<a class="btn" href="#/lesson/new">수업 기록</a>';
-    html += '<a class="btn" href="#/homework/new">숙제 배정</a>';
-    html += '<a class="btn" href="#/counsel/new">상담 기록</a>';
-    html += '<a class="btn" href="#/reports">월간 리포트</a>';
+    // 홈의 네 버튼은 각 화면으로 가는 길이라 테두리형으로 둔다.
+    // 꽉 찬 네이비는 각 화면의 실제 실행 버튼(저장·생성·확정)에만 쓴다.
+    html += '<a class="btn btn--ghost" href="#/lesson/new">수업 기록</a>';
+    html += '<a class="btn btn--ghost" href="#/homework/new">숙제 배정</a>';
+    html += '<a class="btn btn--ghost" href="#/counsel/new">상담 기록</a>';
+    html += '<a class="btn btn--ghost" href="#/reports">월간 리포트</a>';
     html += '</div>';
 
     // 시험 대비 — 다가오는 시험과 남은 기간 (기능 3)
