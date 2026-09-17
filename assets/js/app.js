@@ -539,10 +539,18 @@
       html += '<div class="note note--err"><b>🔴 입력에 없는 내용이 발견되었습니다.</b> 확정하기 전에 반드시 확인하세요.<ul>' +
         result.errors.map(function (e) { return '<li>' + esc(e.message) + '</li>'; }).join('') + '</ul></div>';
     }
-    if (result.warnings.length) {
-      html += '<div class="note note--warn"><b>🟡 확인이 필요한 표현입니다.</b><ul>' +
-        result.warnings.slice(0, 12).map(function (w) { return '<li>' + esc(w.message) + '</li>'; }).join('') +
-        (result.warnings.length > 12 ? '<li>외 ' + (result.warnings.length - 12) + '건</li>' : '') + '</ul></div>';
+    // 표현 규칙(과장 칭찬·부정 단정)과 원문 대조 결과를 따로 보여 준다
+    var style = result.warnings.filter(function (w) { return w.type === 'praise' || w.type === 'negative'; });
+    var unknown = result.warnings.filter(function (w) { return w.type === 'korean'; });
+
+    if (style.length) {
+      html += '<div class="note note--warn"><b>🟡 표현을 다듬어 주세요.</b><ul>' +
+        style.map(function (w) { return '<li>' + esc(w.message) + '</li>'; }).join('') + '</ul></div>';
+    }
+    if (unknown.length) {
+      html += '<div class="note note--warn"><b>🟡 입력에서 찾을 수 없는 표현입니다.</b><ul>' +
+        unknown.slice(0, 10).map(function (w) { return '<li>' + esc(w.message) + '</li>'; }).join('') +
+        (unknown.length > 10 ? '<li>외 ' + (unknown.length - 10) + '건</li>' : '') + '</ul></div>';
     }
     area.innerHTML = html;
   }
@@ -550,6 +558,9 @@
   function bindFeedbackEvents(lesson, settings) {
     var id = lesson.id;
     var isFinal = lesson.feedback.status === 'final';
+
+    // 라우터를 거치지 않고 다시 그릴 때도 입력칸 높이가 내용에 맞도록 한다
+    bindAutoGrow(view);
 
     $$('#editCard textarea').forEach(function (ta) {
       ta.addEventListener('input', function () { refreshPreview(lesson, settings); });

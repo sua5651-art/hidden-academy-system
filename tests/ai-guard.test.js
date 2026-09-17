@@ -42,8 +42,13 @@ const { chromium } = loadPlaywright();
   if (!err.includes('95')) throw new Error('지어낸 점수(95)를 잡지 못함');
   if (!err.includes('Reading')) throw new Error('지어낸 교재명(Reading)을 잡지 못함');
 
-  const warnEl = await page.$('#warnArea .note--warn');
-  if (warnEl) console.log('--- 🟡 확인 요망 ---\n' + (await warnEl.textContent()).trim() + '\n');
+  const warnEls = await page.$$('#warnArea .note--warn');
+  let warnText = '';
+  for (const el of warnEls) warnText += (await el.textContent()).trim() + '\n';
+  console.log('--- 🟡 확인 요망 ---\n' + warnText.trim() + '\n');
+  if (!warnText.includes('과장된 칭찬')) throw new Error('과장 칭찬("훌륭")을 잡지 못함');
+  if (!warnText.includes('부정적으로 단정')) throw new Error('부정 단정("이해하지 못")을 잡지 못함');
+  console.log('✅ 과장 칭찬 · 부정 단정 표현도 잡아냄');
 
   await page.screenshot({ path: (process.env.SP || require('os').tmpdir()) + '/shot-ai-warning.png', fullPage: true });
 

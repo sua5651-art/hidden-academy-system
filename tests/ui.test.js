@@ -78,6 +78,12 @@ const { chromium } = loadPlaywright();
   const readonly = await page.getAttribute('textarea[data-sec="today"]', 'readonly');
   if (readonly === null) throw new Error('확정 후에도 편집이 가능함');
   console.log('✅ 최종 확정 → 잠금(읽기 전용) 적용');
+
+  // 확정 후에도 입력칸이 내용 길이에 맞게 늘어나 글이 잘리지 않아야 한다
+  const clipped = await page.$$eval('#editCard textarea', tas =>
+    tas.filter(t => t.value.trim() && t.scrollHeight > t.clientHeight + 2).map(t => t.dataset.sec));
+  if (clipped.length) throw new Error('확정 후 내용이 잘린 항목: ' + clipped.join(', '));
+  console.log('✅ 확정 후에도 문장이 잘리지 않음');
   await shot('feedback-final');
 
   // 확정 후 목록 상태
