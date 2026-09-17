@@ -27,6 +27,10 @@ echo "▶ 리포트 로직 테스트 (한 달 집계·중복 방지·기간 저�
 node tests/report.test.js || FAIL=1
 
 echo ""
+echo "▶ 구글 시트 스크립트 검사 (가짜 시트로 동작 확인)"
+node tests/google-sheets.test.js || FAIL=1
+
+echo ""
 echo "▶ 고정 문구 오탐 검사 (앱이 넣는 문구가 경고로 잡히지 않는지)"
 node tests/fixed-phrases.test.js || FAIL=1
 
