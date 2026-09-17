@@ -28,8 +28,10 @@ const { chromium } = loadPlaywright();
 
   // 탭은 5개이고 "기록" 탭은 없어야 한다
   const tabs = await page.$$eval('.tab', els => els.map(e => e.textContent.replace(/[^가-힣]/g, '')));
-  if (tabs.length !== 5) throw new Error('탭 개수가 5개가 아님: ' + JSON.stringify(tabs));
-  if (tabs.some(t => t === '기록')) throw new Error('기록 탭이 아직 남아 있음: ' + JSON.stringify(tabs));
+  const EXPECTED = ['홈', '학생', '수업', '숙제', '설정'];
+  if (JSON.stringify(tabs) !== JSON.stringify(EXPECTED)) {
+    throw new Error('탭 구성이 예상과 다름: ' + JSON.stringify(tabs) + ' (기대: ' + JSON.stringify(EXPECTED) + ')');
+  }
   console.log('✅ 탭 5개 — ' + JSON.stringify(tabs));
 
   // 수업 기록 작성으로 가는 길이 홈에 있어야 한다

@@ -438,7 +438,7 @@
   var lessonFilter = { studentId: '', status: '', keyword: '' };
 
   function renderLessons() {
-    setHeader('기록 · 피드백', '', false);
+    setHeader('수업 기록', '', false);
     var students = Store.getStudents({ includeArchived: true });
     var list = Store.getLessons(lessonFilter);
 
