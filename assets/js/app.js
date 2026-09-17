@@ -574,6 +574,7 @@
       if (!data.input.understanding) return toast('학습 상태(이해도)를 선택해 주세요.', 'err');
       var r = Store.saveLesson(data);
       if (!r.ok) return toast(r.error, 'err');
+      sendToSheet('lesson', Store.getLesson(r.id));
       toast('기록을 저장했습니다.', 'ok');
       go('#/feedback/' + r.id);
     });
@@ -1085,6 +1086,7 @@
       };
       var r = Store.saveHomework(data);
       if (!r.ok) return toast(r.error, 'err');
+      sendToSheet('homework', Store.getHomework(r.id));
 
       // 기본 숙제 마스터 갱신은 체크했을 때만 (기능 2)
       if ($('#saveAsDefault').checked) {
@@ -1418,6 +1420,7 @@
         followUp: { needed: !!fd.get('followUpNeeded'), text: fd.get('followUpText') }
       });
       if (!r.ok) return toast(r.error, 'err');
+      sendToSheet('counsel', Store.getCounsel(r.id));
       toast(isNew ? '상담 기록을 저장했습니다.' : (r.changed.length ? '수정했습니다 — ' + r.changed.join(', ') : '바뀐 내용이 없습니다.'), 'ok');
       go('#/counsel/' + r.id);
     });
@@ -2225,6 +2228,65 @@
     });
   }
 
+  // ───────────────────────── 구글 시트 전송 ─────────────────────────
+
+  /**
+   * 저장이 끝난 뒤 시트로 한 벌 더 보낸다.
+   * 실패해도 기기에 저장된 기록은 그대로이므로, 대기줄에 적어 두고 조용히 넘어간다.
+   * (수업 중에 인터넷이 끊겼다고 저장 흐름을 막으면 안 된다)
+   */
+  function sendToSheet(type, record) {
+    var settings = Store.getSettings();
+    if (!SheetsClient.isConfigured(settings)) return;
+    if (!settings.sheets.autoSend) return;
+    if (!record || !record.id) return;
+
+    Store.queueForSheet(type, record.id);
+    SheetsClient.send(type, [record], settings)
+      .then(function (r) {
+        if (r && r.ok) Store.unqueueForSheet(type, record.id);
+        else console.warn('구글 시트가 거부했습니다:', r && r.message);
+      })
+      .catch(function (err) {
+        console.warn('구글 시트로 보내지 못했습니다:', err.message);
+      });
+  }
+
+  /** 대기줄에 남은 기록을 한꺼번에 다시 보낸다 */
+  function flushSheetQueue() {
+    var settings = Store.getSettings();
+    if (!SheetsClient.isConfigured(settings)) {
+      return Promise.resolve({ sent: 0, failed: 0, message: '구글 시트가 설정되어 있지 않습니다.' });
+    }
+    var pending = Store.getQueuedRecords();
+    if (!pending.length) return Promise.resolve({ sent: 0, failed: 0, message: '보낼 기록이 없습니다.' });
+
+    var byType = {};
+    pending.forEach(function (p) { (byType[p.type] = byType[p.type] || []).push(p.record); });
+
+    var sent = 0, failed = 0, firstError = '';
+    var jobs = Object.keys(byType).map(function (type) {
+      return SheetsClient.send(type, byType[type], settings)
+        .then(function (r) {
+          if (r && r.ok) {
+            byType[type].forEach(function (rec) { Store.unqueueForSheet(type, rec.id); });
+            sent += byType[type].length;
+          } else {
+            failed += byType[type].length;
+            if (!firstError) firstError = (r && r.message) || '거부되었습니다.';
+          }
+        })
+        .catch(function (err) {
+          failed += byType[type].length;
+          if (!firstError) firstError = err.message;
+        });
+    });
+
+    return Promise.all(jobs).then(function () {
+      return { sent: sent, failed: failed, message: firstError };
+    });
+  }
+
   // ───────────────────────── 설정 ─────────────────────────
 
   function renderSettings() {
@@ -2259,6 +2321,26 @@
     html += field('API 키', '<input type="password" id="aiKey" value="' + esc(s.ai.apiKey) + '" placeholder="sk-ant-..." autocomplete="off">', false,
       '이 기기 안에만 저장됩니다. 공용 PC에서는 입력하지 마세요.');
     html += '<div class="note note--warn">API 키를 브라우저에 넣으면 그 기기를 쓰는 사람이 볼 수 있습니다. 여러 선생님이 함께 쓰는 기기라면 <b>프록시 주소</b> 방식을 사용하세요.</div>';
+    html += '</div>';
+
+    // ── 구글 시트 ──
+    var sh = s.sheets || { url: '', secret: '', autoSend: true };
+    var queued = Store.getSheetQueue().length;
+    html += '<div class="card"><h3 class="card__title">구글 시트 연결 <small>선택 사항</small></h3>';
+    html += field('웹 앱 주소', '<input type="text" id="shUrl" value="' + esc(sh.url) + '" placeholder="https://script.google.com/macros/s/.../exec">', false,
+      'Apps Script 에서 배포하고 받은 주소입니다. /exec 로 끝납니다.');
+    html += field('비밀번호', '<input type="password" id="shSecret" value="' + esc(sh.secret) + '" autocomplete="off" placeholder="Apps Script 의 SECRET 과 같은 값">', false);
+    html += '<label class="check-label check-label--help" style="margin-bottom:14px">' +
+            '<input type="checkbox" id="shAuto"' + (sh.autoSend ? ' checked' : '') + '> ' +
+            '기록을 저장할 때 시트에도 자동으로 보냅니다</label>';
+    html += '<div class="btn-row"><button class="btn btn--ghost btn--sm" id="shTestBtn">연결 시험</button></div>';
+    html += '<div id="shResult"></div>';
+    if (queued) {
+      html += '<div class="note note--warn" style="margin-top:12px">아직 시트로 보내지 못한 기록이 <b>' + queued + '건</b> 있습니다.' +
+              '<br>기록은 이 기기에 그대로 저장되어 있습니다.</div>';
+      html += '<div class="btn-row"><button class="btn btn--sm" id="shFlushBtn">지금 다시 보내기</button></div>';
+    }
+    html += '<div class="note note--info" style="margin-top:12px">시트로 보내는 것은 <b>덤</b>입니다. 전송이 실패해도 기록은 이 기기에 그대로 남고, 나중에 다시 보낼 수 있습니다.</div>';
     html += '</div>';
 
     html += '<div class="card"><h3 class="card__title">교사 목록</h3>';
@@ -2302,10 +2384,52 @@
           model: $('#aiModel').value.trim() || AIClient.DEFAULT_MODEL,
           proxyUrl: $('#aiProxy').value.trim(),
           apiKey: $('#aiKey').value.trim()
+        },
+        sheets: {
+          url: $('#shUrl').value.trim(),
+          secret: $('#shSecret').value.trim(),
+          autoSend: $('#shAuto').checked
         }
       });
       if (!r.ok) return toast(r.error, 'err');
       toast('설정을 저장했습니다.', 'ok');
+    });
+
+    $('#shTestBtn').addEventListener('click', function () {
+      var btn = $('#shTestBtn');
+      var box = $('#shResult');
+      var settings = Object.assign({}, Store.getSettings(), {
+        sheets: { url: $('#shUrl').value.trim(), secret: $('#shSecret').value.trim(), autoSend: $('#shAuto').checked }
+      });
+      if (!SheetsClient.isConfigured(settings)) {
+        box.innerHTML = '<div class="note note--warn" style="margin-top:12px">주소와 비밀번호를 모두 입력해 주세요.</div>';
+        return;
+      }
+      btn.disabled = true;
+      var prev = btn.textContent;
+      btn.innerHTML = '<span class="spinner"></span> 확인하는 중…';
+      box.innerHTML = '';
+      SheetsClient.test(settings)
+        .then(function (r) {
+          box.innerHTML = '<div class="note note--' + (r.ok ? 'ok' : 'err') + '" style="margin-top:12px">' + esc(r.message) + '</div>';
+        })
+        .catch(function (err) {
+          box.innerHTML = '<div class="note note--err" style="margin-top:12px">연결하지 못했습니다. ' + esc(err.message) + '</div>';
+        })
+        .then(function () { btn.disabled = false; btn.textContent = prev; });
+    });
+
+    var flushBtn = $('#shFlushBtn');
+    if (flushBtn) flushBtn.addEventListener('click', function () {
+      flushBtn.disabled = true;
+      var prev = flushBtn.textContent;
+      flushBtn.innerHTML = '<span class="spinner"></span> 보내는 중…';
+      flushSheetQueue().then(function (r) {
+        if (r.sent && !r.failed) toast(r.sent + '건을 시트로 보냈습니다.', 'ok');
+        else if (r.sent) toast(r.sent + '건 성공 · ' + r.failed + '건 실패', 'err');
+        else toast('보내지 못했습니다. ' + (r.message || ''), 'err');
+        renderSettings();
+      });
     });
 
     $('#addTeacherBtn').addEventListener('click', function () {

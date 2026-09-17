@@ -20,7 +20,8 @@
       tone: 'default',      // concise | default | warm
       engine: 'rule',       // rule | ai
       signature: '',
-      ai: { model: 'claude-sonnet-5', apiKey: '', proxyUrl: '' }
+      ai: { model: 'claude-sonnet-5', apiKey: '', proxyUrl: '' },
+      sheets: { url: '', secret: '', autoSend: true }
     },
     teachers: [],
     students: [],
@@ -29,7 +30,8 @@
     counsels: [],
     exams: [],
     preps: [],
-    reports: []
+    reports: [],
+    sheetQueue: []
   };
 
   /** 이해도 5단계 정의 — 화면 표시와 고정 문장을 한 곳에서 관리 */
@@ -168,6 +170,7 @@
     s.exams = Array.isArray(s.exams) ? s.exams : [];
     s.preps = Array.isArray(s.preps) ? s.preps : [];
     s.reports = Array.isArray(s.reports) ? s.reports : [];
+    s.sheetQueue = Array.isArray(s.sheetQueue) ? s.sheetQueue : [];
     s.students.forEach(normalizeStudent);
     return s;
   }
@@ -1253,6 +1256,56 @@
     return persist();
   }
 
+  // ────────────────────────────── 구글 시트 전송 대기줄 ──────────────────────────────
+
+  /**
+   * 시트로 보내지 못한 기록을 적어 둔다.
+   *
+   * 기록은 이미 이 기기에 저장되어 있다. 대기줄은 "아직 시트에 못 보냈다"는
+   * 표시일 뿐이므로, 전송이 실패해도 기록이 사라지지 않는다.
+   * 인터넷이 끊긴 채로 수업 기록을 남기는 일이 흔하기 때문에 필요하다.
+   */
+
+  function queueForSheet(type, id) {
+    load();
+    if (!type || !id) return { ok: false, error: '보낼 기록을 찾을 수 없습니다.' };
+    var exists = state.sheetQueue.filter(function (q) { return q.type === type && q.id === id; })[0];
+    if (exists) { exists.at = nowISO(); return persist(); }
+    state.sheetQueue.push({ type: type, id: id, at: nowISO() });
+    if (state.sheetQueue.length > 500) state.sheetQueue = state.sheetQueue.slice(-500);
+    return persist();
+  }
+
+  function unqueueForSheet(type, id) {
+    load();
+    state.sheetQueue = state.sheetQueue.filter(function (q) {
+      return !(q.type === type && q.id === id);
+    });
+    return persist();
+  }
+
+  function getSheetQueue() { return load().sheetQueue.slice(); }
+
+  function clearSheetQueue() {
+    load();
+    state.sheetQueue = [];
+    return persist();
+  }
+
+  /** 대기줄에 적힌 id 로 실제 기록을 찾아 온다 (지워진 것은 건너뛴다) */
+  function getQueuedRecords() {
+    load();
+    var out = [];
+    state.sheetQueue.forEach(function (q) {
+      var rec = null;
+      if (q.type === 'lesson') rec = getLesson(q.id);
+      else if (q.type === 'homework') rec = getHomework(q.id);
+      else if (q.type === 'counsel') rec = getCounsel(q.id);
+      if (rec) out.push({ type: q.type, record: rec });
+    });
+    return out;
+  }
+
   // ────────────────────────────── 통계 ──────────────────────────────
 
   function getStats() {
@@ -1434,6 +1487,11 @@
     prepProgress: prepProgress,
     diffDays: diffDays,
     dayOffset: dayOffset,
+    queueForSheet: queueForSheet,
+    unqueueForSheet: unqueueForSheet,
+    getSheetQueue: getSheetQueue,
+    clearSheetQueue: clearSheetQueue,
+    getQueuedRecords: getQueuedRecords,
     getStats: getStats,
     exportJSON: exportJSON,
     importJSON: importJSON,

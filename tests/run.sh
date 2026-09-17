@@ -40,6 +40,8 @@ if node -e "try{require('playwright')}catch(e){try{require('/opt/node22/lib/node
   SRV=$!
   node tests/mock-ai-server.js >/dev/null 2>&1 &
   MOCK=$!
+  node tests/mock-sheets-server.js >/dev/null 2>&1 &
+  MOCK2=$!
   sleep 2
   echo ""
   echo "▶ 화면 테스트 (실제 브라우저에서 전체 흐름)"
@@ -64,9 +66,13 @@ if node -e "try{require('playwright')}catch(e){try{require('/opt/node22/lib/node
   node tests/recent-lessons.test.js || FAIL=1
 
   echo ""
+  echo "▶ 구글 시트 전송 검사 (가짜 Apps Script 서버로 전 과정)"
+  node tests/sheets-ui.test.js || FAIL=1
+
+  echo ""
   echo "▶ 디자인 요구사항 검사 (흰 배경·네이비·한 열·가로스크롤·버튼폭·위계·장식)"
   node tests/design.test.js || FAIL=1
-  kill $SRV $MOCK 2>/dev/null
+  kill $SRV $MOCK $MOCK2 2>/dev/null
 else
   echo ""
   echo "⏭  playwright 가 없어 화면 테스트를 건너뜁니다 (npm i -D playwright 로 설치)"
