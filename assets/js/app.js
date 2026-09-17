@@ -2411,10 +2411,10 @@
       box.innerHTML = '';
       SheetsClient.test(settings)
         .then(function (r) {
-          box.innerHTML = '<div class="note note--' + (r.ok ? 'ok' : 'err') + '" style="margin-top:12px">' + esc(r.message) + '</div>';
+          box.innerHTML = '<div class="note note--lines note--' + (r.ok ? 'ok' : 'err') + '" style="margin-top:12px">' + esc(r.message) + '</div>';
         })
         .catch(function (err) {
-          box.innerHTML = '<div class="note note--err" style="margin-top:12px">연결하지 못했습니다. ' + esc(err.message) + '</div>';
+          box.innerHTML = '<div class="note note--lines note--err" style="margin-top:12px">' + esc(err.message) + '</div>';
         })
         .then(function () { btn.disabled = false; btn.textContent = prev; });
     });

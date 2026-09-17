@@ -16,6 +16,35 @@
 
   function trim(v) { return String(v == null ? '' : v).trim(); }
 
+  /**
+   * 주소가 확실히 잘못된 경우만 미리 걸러 낸다.
+   * 안내문의 예시를 그대로 붙여넣는 일이 잦아서, 그 경우를 먼저 짚어 준다.
+   * @returns 문제가 있으면 안내 문구, 없으면 빈 문자열
+   */
+  function checkUrl(url) {
+    var u = trim(url);
+    if (!u) return '웹 앱 주소를 입력해 주세요.';
+    if (u.indexOf('...') !== -1 || u.indexOf('\u2026') !== -1) {
+      return '주소에 점(...)이 들어 있습니다. 안내문의 예시를 그대로 붙여넣으신 것 같습니다.\n' +
+             'Apps Script 에서 배포 → 배포 관리 → URL 복사 로 실제 주소를 가져와 주세요.';
+    }
+    if (!/^https?:\/\//.test(u)) return '주소는 https:// 로 시작해야 합니다.';
+    if (/\/dev$/.test(u)) return '/dev 로 끝나는 주소는 쓸 수 없습니다. /exec 로 끝나는 주소가 필요합니다.';
+    return '';
+  }
+
+  /** 브라우저가 내놓는 영어 오류를 알아들을 수 있는 말로 바꾼다 */
+  function explainError(err) {
+    var m = String((err && err.message) || err || '');
+    if (/Failed to fetch|NetworkError|Load failed/i.test(m)) {
+      return '주소에 연결하지 못했습니다.\n' +
+             '· 주소가 정확한지 (Apps Script → 배포 → 배포 관리 → URL 복사)\n' +
+             '· 배포할 때 "액세스 권한: 모든 사용자" 로 했는지\n' +
+             '· 인터넷이 연결되어 있는지 확인해 주세요.';
+    }
+    return m;
+  }
+
   function isConfigured(settings) {
     var s = (settings && settings.sheets) || {};
     return !!(trim(s.url) && trim(s.secret));
@@ -101,7 +130,8 @@
   function post(body, settings) {
     var s = (settings && settings.sheets) || {};
     var url = trim(s.url);
-    if (!url) return Promise.reject(new Error('구글 시트 주소가 설정되어 있지 않습니다.'));
+    var problem = checkUrl(url);
+    if (problem) return Promise.reject(new Error(problem));
 
     return fetch(url, {
       method: 'POST',
@@ -118,6 +148,8 @@
         }
         return parsed;
       });
+    }).catch(function (err) {
+      throw new Error(explainError(err));
     });
   }
 
@@ -157,6 +189,8 @@
   }
 
   global.SheetsClient = {
+    checkUrl: checkUrl,
+    explainError: explainError,
     isConfigured: isConfigured,
     toRow: toRow,
     send: send,

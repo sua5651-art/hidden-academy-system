@@ -56,6 +56,29 @@ const SECRET = 'test-secret';
   await page.click('#saveSettings');
   await page.waitForTimeout(250);
 
+  console.log('\n[3-2] 안내문 예시를 그대로 붙여넣었을 때');
+  await page.fill('#shUrl', 'https://script.google.com/macros/s/AKfycbx..............long.../exec');
+  await page.click('#shTestBtn');
+  await page.waitForFunction(() => {
+    const el = document.querySelector('#shResult .note');
+    return el && el.textContent.includes('점(...)');
+  }, { timeout: 8000 });
+  ok('예시 주소라고 짚어 줌 — ' + (await page.textContent('#shResult .note')).trim().split('\n')[0]);
+
+  console.log('\n[3-3] 주소가 틀렸을 때');
+  await page.fill('#shUrl', 'https://script.google.com/macros/s/없는주소/exec');
+  await page.click('#shTestBtn');
+  await page.waitForFunction(() => {
+    const el = document.querySelector('#shResult .note--err');
+    return el && el.textContent.includes('연결하지 못했습니다');
+  }, { timeout: 15000 });
+  const netMsg = await page.textContent('#shResult .note');
+  if (!netMsg.includes('배포 관리')) throw new Error('무엇을 확인할지 안내가 없음: ' + netMsg);
+  ok('영어 오류 대신 확인할 곳을 알려 줌');
+  await page.fill('#shUrl', SHEET_URL);
+  await page.click('#saveSettings');
+  await page.waitForTimeout(250);
+
   console.log('\n[4] 수업 기록을 저장하면 시트에 쌓인다');
   await page.evaluate(() => Store.saveStudent({ name:'김민준', school:'정왕중', grade:'중3', teacher:'김선생' }));
   await page.goto(base + '#/home');

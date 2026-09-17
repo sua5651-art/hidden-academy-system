@@ -267,6 +267,8 @@ a.list__item:focus-visible { outline: 2px solid var(--navy); outline-offset: 1px
   border: 1px solid transparent;
 }
 .note--info { background: var(--surface-2); color: var(--text-body); border-color: var(--border); }
+/* 여러 줄짜리 안내(연결 시험 결과 등)에서 줄바꿈을 살린다 */
+.note--lines { white-space: pre-line; }
 .note--warn { background: var(--warn-bg);   color: var(--warn); }
 .note--err  { background: var(--danger-bg); color: var(--danger); }
 .note--ok   { background: var(--ok-bg);     color: var(--ok); }
