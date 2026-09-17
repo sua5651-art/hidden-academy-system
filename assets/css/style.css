@@ -195,10 +195,11 @@ select { background-image: linear-gradient(45deg, transparent 50%, var(--text-di
 }
 .tab {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px;
-  padding: 9px 2px 8px; text-decoration: none; color: var(--text-dim);
-  font-size: 11px; font-weight: 600;
+  padding: 9px 1px 8px; text-decoration: none; color: var(--text-dim);
+  font-size: 10.5px; font-weight: 600; min-width: 0;
 }
-.tab__icon { font-size: 19px; line-height: 1; }
+.tab > span:last-child { white-space: nowrap; }
+.tab__icon { font-size: 18px; line-height: 1; }
 .tab[aria-current="page"] { color: var(--brand); }
 
 /* ── 토스트 알림 ────────────────────────────────── */
@@ -248,3 +249,40 @@ select { background-image: linear-gradient(45deg, transparent 50%, var(--text-di
   padding: 6px 8px 6px 13px; font-size: 13px;
 }
 .chip button { background: none; border: 0; color: var(--text-dim); font-size: 16px; cursor: pointer; line-height: 1; padding: 0 4px; }
+
+/* ── 숙제 항목 목록 ────────────────────────────────── */
+.hw-item {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 0; border-bottom: 1px solid var(--border);
+}
+.hw-item:last-child { border-bottom: 0; }
+.hw-item__check {
+  flex: 0 0 auto; width: 22px; height: 22px; margin-top: 1px;
+  accent-color: var(--brand); cursor: pointer;
+}
+.hw-item__text { flex: 1; font-size: 14.5px; word-break: break-word; line-height: 1.5; }
+.hw-item__text.done { text-decoration: line-through; color: var(--text-dim); }
+.hw-item__del {
+  flex: 0 0 auto; background: none; border: 0; color: var(--text-dim);
+  font-size: 19px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+
+/* 숙제 입력용 한 줄 항목 */
+.hw-edit { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.hw-edit input { flex: 1; }
+
+.hw-origin {
+  display: inline-block; font-size: 10.5px; font-weight: 700;
+  padding: 2px 7px; border-radius: 999px; margin-left: 6px; vertical-align: 1px;
+}
+.hw-origin--base { background: #ddf4ff; color: #0969da; }
+.hw-origin--extra { background: var(--warn-bg); color: var(--warn); }
+@media (prefers-color-scheme: dark) {
+  .hw-origin--base { background: #17324d; color: #6cb6ff; }
+}
+
+.progress {
+  height: 7px; background: var(--surface-2); border-radius: 999px;
+  overflow: hidden; margin: 10px 0 4px;
+}
+.progress__bar { height: 100%; background: var(--ok); border-radius: 999px; transition: width .2s; }

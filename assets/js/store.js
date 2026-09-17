@@ -24,7 +24,8 @@
     },
     teachers: [],
     students: [],
-    lessons: []
+    lessons: [],
+    homeworks: []
   };
 
   /** 이해도 5단계 정의 — 화면 표시와 고정 문장을 한 곳에서 관리 */
@@ -114,12 +115,25 @@
     return state;
   }
 
+  /**
+   * 예전 버전에서 만든 학생 데이터에 새 항목이 없으면 빈 값으로 채운다.
+   * 불러오기(load)와 가져오기(import) 양쪽에서 모두 거쳐야 한다.
+   */
+  function normalizeStudent(st) {
+    if (!st) return st;
+    if (typeof st.teacher !== 'string') st.teacher = '';
+    if (!Array.isArray(st.defaultHomework)) st.defaultHomework = [];
+    return st;
+  }
+
   /** 앞으로 데이터 구조가 바뀌면 여기에 변환 규칙을 추가한다 */
   function migrate(s) {
     if (!s.schemaVersion || s.schemaVersion < 1) s.schemaVersion = 1;
     s.students = Array.isArray(s.students) ? s.students : [];
     s.lessons = Array.isArray(s.lessons) ? s.lessons : [];
     s.teachers = Array.isArray(s.teachers) ? s.teachers : [];
+    s.homeworks = Array.isArray(s.homeworks) ? s.homeworks : [];
+    s.students.forEach(normalizeStudent);
     return s;
   }
 
@@ -209,8 +223,11 @@
         school: String(data.school || '').trim(),
         grade: String(data.grade || '').trim(),
         className: String(data.className || '').trim(),
+        teacher: String(data.teacher || '').trim(),
         parentContact: String(data.parentContact || '').trim(),
         note: String(data.note || '').trim(),
+        // 기본 숙제는 별도 함수로만 바꾼다 (실수로 지워지지 않도록)
+        defaultHomework: Array.isArray(cur.defaultHomework) ? cur.defaultHomework : [],
         updatedAt: nowISO()
       });
       var r = persist();
@@ -223,8 +240,10 @@
       school: String(data.school || '').trim(),
       grade: String(data.grade || '').trim(),
       className: String(data.className || '').trim(),
+      teacher: String(data.teacher || '').trim(),
       parentContact: String(data.parentContact || '').trim(),
       note: String(data.note || '').trim(),
+      defaultHomework: [],
       archived: false,
       createdAt: nowISO(),
       updatedAt: nowISO()
@@ -396,13 +415,211 @@
     return persist();
   }
 
+  // ────────────────────────────── 기본 숙제 (학생별 마스터) ──────────────────────────────
+
+  /**
+   * 기본 숙제는 "학생에게 붙어 있는 반복 숙제"다.
+   * 날마다 만드는 숙제 기록과는 분리해서 보관하며,
+   * 숙제 기록을 고쳐도 여기 값은 바뀌지 않는다 (명시적으로 저장할 때만 바뀐다).
+   */
+  function getDefaultHomework(studentId) {
+    var s = load().students.filter(function (x) { return x.id === studentId; })[0];
+    return s && Array.isArray(s.defaultHomework) ? clone(s.defaultHomework) : [];
+  }
+
+  function setDefaultHomework(studentId, items) {
+    load();
+    var s = state.students.filter(function (x) { return x.id === studentId; })[0];
+    if (!s) return { ok: false, error: '해당 학생을 찾을 수 없습니다.' };
+    s.defaultHomework = normalizeItems(items).map(function (it) { return { id: it.id, text: it.text }; });
+    s.updatedAt = nowISO();
+    return persist();
+  }
+
+  /** 숙제 항목 배열을 {id, text, done} 형태로 정리한다 */
+  function normalizeItems(items) {
+    if (!Array.isArray(items)) return [];
+    return items.map(function (it) {
+      if (typeof it === 'string') return { id: uid('itm'), text: it.trim(), done: false };
+      return {
+        id: it && it.id ? it.id : uid('itm'),
+        text: String((it && it.text) || '').trim(),
+        done: !!(it && it.done)
+      };
+    }).filter(function (it) { return it.text; });
+  }
+
+  // ────────────────────────────── 숙제 기록 (날짜별) ──────────────────────────────
+
+  function emptyTeacherCheck() {
+    return { checked: false, by: '', at: '', note: '' };
+  }
+
+  function getHomeworks(filter) {
+    filter = filter || {};
+    var list = load().homeworks.slice();
+    if (!filter.includeArchived) list = list.filter(function (h) { return !h.archived; });
+    if (filter.studentId) list = list.filter(function (h) { return h.studentId === filter.studentId; });
+    if (filter.from) list = list.filter(function (h) { return h.date >= filter.from; });
+    if (filter.to) list = list.filter(function (h) { return h.date <= filter.to; });
+    if (filter.checked === true) list = list.filter(function (h) { return h.teacherCheck && h.teacherCheck.checked; });
+    if (filter.checked === false) list = list.filter(function (h) { return !(h.teacherCheck && h.teacherCheck.checked); });
+    if (filter.state) {
+      list = list.filter(function (h) { return summarize(h).state === filter.state; });
+    }
+    if (filter.keyword) {
+      var kw = String(filter.keyword).trim().toLowerCase();
+      list = list.filter(function (h) {
+        var texts = (h.base || []).concat(h.extra || []).map(function (i) { return i.text; });
+        return [h.studentName, h.teacher, h.className].concat(texts).join(' ').toLowerCase().indexOf(kw) !== -1;
+      });
+    }
+    return list.sort(function (a, b) {
+      if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+      return (a.createdAt < b.createdAt) ? 1 : -1;
+    });
+  }
+
+  function getHomework(id) {
+    var found = load().homeworks.filter(function (h) { return h.id === id; })[0];
+    return found ? clone(found) : null;
+  }
+
+  /** 완료 현황 요약 — 화면과 문장 생성에서 함께 쓴다 */
+  function summarize(hw) {
+    var items = (hw.base || []).concat(hw.extra || []);
+    var total = items.length;
+    var done = items.filter(function (i) { return i.done; }).length;
+    var state = 'none';
+    if (total > 0) state = done === 0 ? 'todo' : (done === total ? 'done' : 'doing');
+    return {
+      total: total, done: done, remain: total - done, state: state,
+      checked: !!(hw.teacherCheck && hw.teacherCheck.checked)
+    };
+  }
+
+  /**
+   * 숙제 기록 저장 (신규/수정).
+   * base(기본 숙제)와 extra(당일 추가 숙제)를 끝까지 분리해 보관한다.
+   */
+  function saveHomework(data) {
+    load();
+    var studentId = String(data.studentId || '').trim();
+    var student = state.students.filter(function (s) { return s.id === studentId; })[0];
+    if (!student) return { ok: false, error: '학생을 선택해 주세요.' };
+    if (!data.date) return { ok: false, error: '숙제 날짜를 입력해 주세요.' };
+
+    var base = normalizeItems(data.base);
+    var extra = normalizeItems(data.extra);
+    if (!base.length && !extra.length) {
+      return { ok: false, error: '기본 숙제나 오늘 추가 숙제 중 하나는 입력해야 합니다.' };
+    }
+    if (data.dueDate && data.dueDate < data.date) {
+      return { ok: false, error: '제출 예정일이 숙제 날짜보다 앞설 수 없습니다.' };
+    }
+
+    if (data.id) {
+      var idx = -1;
+      state.homeworks.forEach(function (h, i) { if (h.id === data.id) idx = i; });
+      if (idx === -1) return { ok: false, error: '해당 숙제 기록을 찾을 수 없습니다.' };
+      var cur = state.homeworks[idx];
+      state.homeworks[idx] = Object.assign({}, cur, {
+        studentId: studentId,
+        studentName: student.name,
+        className: String(data.className != null ? data.className : cur.className || '').trim(),
+        teacher: String(data.teacher != null ? data.teacher : cur.teacher || '').trim(),
+        date: data.date,
+        dueDate: data.dueDate || '',
+        base: base,
+        extra: extra,
+        updatedAt: nowISO()
+      });
+      var r = persist();
+      return r.ok ? { ok: true, id: data.id } : r;
+    }
+
+    var record = {
+      id: uid('hw'),
+      studentId: studentId,
+      studentName: student.name,
+      className: String(data.className != null ? data.className : student.className || '').trim(),
+      teacher: String(data.teacher || student.teacher || '').trim(),
+      date: data.date,
+      dueDate: data.dueDate || '',
+      base: base,
+      extra: extra,
+      teacherCheck: emptyTeacherCheck(),
+      message: { text: '', generatedAt: '' },
+      archived: false,
+      createdAt: nowISO(),
+      updatedAt: nowISO()
+    };
+    state.homeworks.push(record);
+    var res = persist();
+    return res.ok ? { ok: true, id: record.id } : res;
+  }
+
+  /** 숙제 항목 완료 여부 토글 */
+  function setHomeworkItemDone(homeworkId, kind, itemId, done) {
+    load();
+    var hw = state.homeworks.filter(function (h) { return h.id === homeworkId; })[0];
+    if (!hw) return { ok: false, error: '해당 숙제 기록을 찾을 수 없습니다.' };
+    var list = kind === 'extra' ? hw.extra : hw.base;
+    var item = (list || []).filter(function (i) { return i.id === itemId; })[0];
+    if (!item) return { ok: false, error: '해당 숙제 항목을 찾을 수 없습니다.' };
+    item.done = !!done;
+    hw.updatedAt = nowISO();
+    return persist();
+  }
+
+  /** 교사 확인 표시 */
+  function setTeacherCheck(homeworkId, payload) {
+    load();
+    var hw = state.homeworks.filter(function (h) { return h.id === homeworkId; })[0];
+    if (!hw) return { ok: false, error: '해당 숙제 기록을 찾을 수 없습니다.' };
+    payload = payload || {};
+    hw.teacherCheck = {
+      checked: !!payload.checked,
+      by: String(payload.by || hw.teacher || '').trim(),
+      at: payload.checked ? nowISO() : '',
+      note: String(payload.note != null ? payload.note : (hw.teacherCheck && hw.teacherCheck.note) || '').trim()
+    };
+    hw.updatedAt = nowISO();
+    return persist();
+  }
+
+  /** 학부모 전송용 문장 보관 */
+  function saveHomeworkMessage(homeworkId, text) {
+    load();
+    var hw = state.homeworks.filter(function (h) { return h.id === homeworkId; })[0];
+    if (!hw) return { ok: false, error: '해당 숙제 기록을 찾을 수 없습니다.' };
+    hw.message = { text: String(text || ''), generatedAt: nowISO() };
+    hw.updatedAt = nowISO();
+    return persist();
+  }
+
+  function setHomeworkArchived(id, archived) {
+    load();
+    var h = state.homeworks.filter(function (x) { return x.id === id; })[0];
+    if (!h) return { ok: false, error: '해당 숙제 기록을 찾을 수 없습니다.' };
+    h.archived = !!archived;
+    h.updatedAt = nowISO();
+    return persist();
+  }
+
   // ────────────────────────────── 통계 ──────────────────────────────
 
   function getStats() {
     var s = load();
     var today = todayStr();
     var active = s.lessons.filter(function (l) { return !l.archived; });
+    var hw = s.homeworks.filter(function (h) { return !h.archived; });
+    var hwToday = hw.filter(function (h) { return h.date === today; });
     return {
+      homeworksTotal: hw.length,
+      homeworksToday: hwToday.length,
+      homeworksUnchecked: hw.filter(function (h) { return !(h.teacherCheck && h.teacherCheck.checked); }).length,
+      homeworksDue: hw.filter(function (h) { return h.dueDate && h.dueDate >= today && summarize(h).state !== 'done'; }).length,
       students: s.students.filter(function (x) { return !x.archived; }).length,
       lessonsTotal: active.length,
       lessonsToday: active.filter(function (l) { return l.date === today; }).length,
@@ -431,14 +648,14 @@
     if (mode === 'replace') {
       state = migrate(mergeDefaults(DEFAULT_STATE, incoming));
       var r0 = persist();
-      return r0.ok ? { ok: true, added: { students: state.students.length, lessons: state.lessons.length }, mode: 'replace' } : r0;
+      return r0.ok ? { ok: true, added: { students: state.students.length, lessons: state.lessons.length, homeworks: state.homeworks.length }, mode: 'replace' } : r0;
     }
 
     var addedStudents = 0, addedLessons = 0;
     var studentIds = {};
     state.students.forEach(function (s) { studentIds[s.id] = true; });
     (incoming.students || []).forEach(function (s) {
-      if (s && s.id && !studentIds[s.id]) { state.students.push(s); studentIds[s.id] = true; addedStudents++; }
+      if (s && s.id && !studentIds[s.id]) { state.students.push(normalizeStudent(s)); studentIds[s.id] = true; addedStudents++; }
     });
 
     var lessonIds = {};
@@ -447,12 +664,19 @@
       if (l && l.id && !lessonIds[l.id]) { state.lessons.push(l); lessonIds[l.id] = true; addedLessons++; }
     });
 
+    var addedHomeworks = 0;
+    var hwIds = {};
+    state.homeworks.forEach(function (h) { hwIds[h.id] = true; });
+    (incoming.homeworks || []).forEach(function (h) {
+      if (h && h.id && !hwIds[h.id]) { state.homeworks.push(h); hwIds[h.id] = true; addedHomeworks++; }
+    });
+
     (incoming.teachers || []).forEach(function (t) {
       if (t && state.teachers.indexOf(t) === -1) state.teachers.push(t);
     });
 
     var r = persist();
-    return r.ok ? { ok: true, added: { students: addedStudents, lessons: addedLessons }, mode: 'merge' } : r;
+    return r.ok ? { ok: true, added: { students: addedStudents, lessons: addedLessons, homeworks: addedHomeworks }, mode: 'merge' } : r;
   }
 
   /** 전체 초기화 — 화면에서 두 번 확인한 뒤에만 호출된다 */
@@ -486,6 +710,17 @@
     saveFeedback: saveFeedback,
     unlockFeedback: unlockFeedback,
     setLessonArchived: setLessonArchived,
+    getDefaultHomework: getDefaultHomework,
+    setDefaultHomework: setDefaultHomework,
+    normalizeItems: normalizeItems,
+    getHomeworks: getHomeworks,
+    getHomework: getHomework,
+    saveHomework: saveHomework,
+    setHomeworkItemDone: setHomeworkItemDone,
+    setTeacherCheck: setTeacherCheck,
+    saveHomeworkMessage: saveHomeworkMessage,
+    setHomeworkArchived: setHomeworkArchived,
+    summarize: summarize,
     getStats: getStats,
     exportJSON: exportJSON,
     importJSON: importJSON,

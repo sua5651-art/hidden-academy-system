@@ -7,8 +7,16 @@ set -u
 cd "$(dirname "$0")/.."
 FAIL=0
 
-echo "▶ 로직 테스트 (저장·생성·검증)"
+echo "▶ 로직 테스트 (저장·피드백 생성·6원칙 검증)"
 node tests/logic.test.js || FAIL=1
+
+echo ""
+echo "▶ 숙제 로직 테스트 (기본/당일 숙제 분리·완료·교사확인·문장)"
+node tests/homework.test.js || FAIL=1
+
+echo ""
+echo "▶ 고정 문구 오탐 검사 (앱이 넣는 문구가 경고로 잡히지 않는지)"
+node tests/fixed-phrases.test.js || FAIL=1
 
 if node -e "try{require('playwright')}catch(e){try{require('/opt/node22/lib/node_modules/playwright')}catch(e2){process.exit(1)}}" 2>/dev/null; then
   PORT=8899
@@ -23,6 +31,9 @@ if node -e "try{require('playwright')}catch(e){try{require('/opt/node22/lib/node
   echo ""
   echo "▶ 사실 검증 테스트 (AI가 지어낸 내용을 잡아내는지)"
   node tests/ai-guard.test.js || FAIL=1
+  echo ""
+  echo "▶ 숙제 화면 테스트 (배정 → 완료 체크 → 교사확인 → 문장)"
+  node tests/homework-ui.test.js || FAIL=1
   kill $SRV $MOCK 2>/dev/null
 else
   echo ""

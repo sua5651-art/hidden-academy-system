@@ -128,7 +128,15 @@
     html += '<div class="stat"><span class="stat__num">' + st.lessonsTotal + '</span><span class="stat__label">전체 기록</span></div>';
     html += '</div>';
 
-    html += '<a class="btn btn--block" href="#/lesson/new">✏️ 새 수업 기록 작성</a>';
+    html += '<div class="btn-row">';
+    html += '<a class="btn" href="#/lesson/new">✏️ 수업 기록</a>';
+    html += '<a class="btn" href="#/homework/new">📚 숙제 배정</a>';
+    html += '</div>';
+
+    if (st.homeworksUnchecked) {
+      html += '<div class="note note--warn" style="margin-top:14px">교사 확인이 남은 숙제가 ' + st.homeworksUnchecked +
+              '건 있습니다. <a href="#/homeworks">숙제 화면에서 확인하기</a></div>';
+    }
 
     html += '<h2 class="section-title">최근 기록</h2>';
     if (!recent.length) {
@@ -177,6 +185,8 @@
       html += '<ul class="list">' + list.map(function (s) {
         var meta = [s.school, s.grade, s.className].filter(Boolean).join(' · ');
         var count = Store.getLessons({ studentId: s.id }).length;
+        var defCount = (s.defaultHomework || []).length;
+        if (defCount) meta += (meta ? ' · ' : '') + '기본 숙제 ' + defCount + '개';
         return '<a class="list__item" href="#/student/' + esc(s.id) + '">' +
           '<div class="list__row"><span class="list__name">' + esc(s.name) + '</span>' +
           (s.archived ? '<span class="badge badge--archived">보관</span>' : '<span class="badge">기록 ' + count + '건</span>') + '</div>' +
@@ -205,7 +215,7 @@
 
   function renderStudentForm(id) {
     var isNew = !id;
-    var s = isNew ? { name: '', school: '', grade: '', className: '', parentContact: '', note: '', archived: false }
+    var s = isNew ? { name: '', school: '', grade: '', className: '', teacher: '', parentContact: '', note: '', archived: false }
                   : Store.getStudent(id);
     if (!s) { toast('학생을 찾을 수 없습니다.', 'err'); return go('#/students'); }
     setHeader(isNew ? '학생 추가' : '학생 수정', '', true);
@@ -214,7 +224,10 @@
     html += field('이름', '<input type="text" name="name" value="' + esc(s.name) + '" required autocomplete="off">', true);
     html += field('학교', '<input type="text" name="school" value="' + esc(s.school) + '" placeholder="예: 서해고">');
     html += field('학년', '<input type="text" name="grade" value="' + esc(s.grade) + '" placeholder="예: 고2">');
-    html += field('반(클래스)', '<input type="text" name="className" value="' + esc(s.className) + '" placeholder="예: 내신 A반">');
+    html += field('반 / 레벨', '<input type="text" name="className" value="' + esc(s.className) + '" placeholder="예: 내신 A반 / Level 3">');
+    html += field('담당 교사', '<input type="text" name="teacher" value="' + esc(s.teacher || '') + '" list="stuTeacherList" placeholder="예: 김선생">' +
+      '<datalist id="stuTeacherList">' + Store.getTeachers().map(function (t) { return '<option value="' + esc(t) + '">'; }).join('') + '</datalist>',
+      false, '수업 기록과 숙제를 만들 때 자동으로 채워집니다.');
     html += field('학부모 연락처', '<input type="text" name="parentContact" value="' + esc(s.parentContact) + '" inputmode="tel" placeholder="선택 입력">');
     html += field('비고', '<textarea name="note" placeholder="선택 입력">' + esc(s.note) + '</textarea>');
     html += '</div>';
@@ -222,6 +235,17 @@
     html += '</form>';
 
     if (!isNew) {
+      // 기본 숙제 (학생에게 붙어 있는 반복 숙제) 관리
+      var defaults = Store.getDefaultHomework(id);
+      html += '<div class="card"><h3 class="card__title">기본 숙제 <small>매번 자동으로 불러올 반복 숙제</small></h3>';
+      html += '<div id="defList">' + (defaults.length ? defaults.map(function (i) { return hwEditRow('base', i); }).join('') : hwEditRow('base', {})) + '</div>';
+      html += '<div class="btn-row" style="margin-top:8px">';
+      html += '<button type="button" class="btn btn--ghost btn--sm" id="addDef">＋ 줄 추가</button>';
+      html += '<button type="button" class="btn btn--sm" id="saveDef">기본 숙제 저장</button></div>';
+      html += '<div class="note note--info" style="margin-top:12px">여기 등록한 숙제는 <b>숙제를 배정할 때 자동으로 채워집니다.</b><br>' +
+              '그날그날 고친 내용은 이 기본 숙제를 바꾸지 않습니다.</div>';
+      html += '</div>';
+
       html += '<div class="note note--info" style="margin-top:16px">학생 정보는 삭제되지 않습니다. 더 이상 다니지 않는 학생은 <b>보관</b> 처리하면 목록에서만 숨겨지고 기록은 그대로 남습니다.</div>';
       html += '<button class="btn btn--ghost btn--block" id="archiveBtn">' + (s.archived ? '보관 해제하기' : '이 학생 보관하기') + '</button>';
     }
@@ -237,6 +261,16 @@
       toast('저장했습니다.', 'ok');
       go('#/students');
     });
+
+    if (!isNew) {
+      bindEditList('#defList', '#addDef', 'base');
+      $('#saveDef').addEventListener('click', function () {
+        var items = readEditRows('#defList');
+        var r = Store.setDefaultHomework(id, items);
+        if (!r.ok) return toast(r.error, 'err');
+        toast(items.length ? '기본 숙제 ' + items.length + '개를 저장했습니다.' : '기본 숙제를 비웠습니다.', 'ok');
+      });
+    }
 
     var ab = $('#archiveBtn');
     if (ab) ab.addEventListener('click', function () {
@@ -363,6 +397,16 @@
         else { tInput.value = ''; tInput.style.display = ''; tInput.focus(); }
       });
     }
+
+    // 학생을 고르면 그 학생의 담당 교사를 자동으로 채운다
+    var studentSel = $('select[name="studentId"]');
+    if (studentSel) studentSel.addEventListener('change', function () {
+      var stu = Store.getStudent(studentSel.value);
+      if (stu && stu.teacher && !tInput.value.trim()) {
+        tInput.value = stu.teacher;
+        if (tSel) tSel.value = teachers.indexOf(stu.teacher) !== -1 ? stu.teacher : '';
+      }
+    });
 
     $('#lessonForm').addEventListener('submit', function (e) {
       e.preventDefault();
@@ -530,8 +574,10 @@
     return { sections: sections, text: text };
   }
 
-  function renderWarnings(result) {
-    var area = $('#warnArea');
+  function renderWarnings(result) { renderWarningsInto('#warnArea', result); }
+
+  function renderWarningsInto(sel, result) {
+    var area = $(sel);
     if (!area) return;
     if (!result || (!result.errors.length && !result.warnings.length)) { area.innerHTML = ''; return; }
     var html = '';
@@ -656,6 +702,378 @@
     $('#copyBtn').addEventListener('click', function () {
       var text = isFinal ? lesson.feedback.text : refreshPreview(lesson, settings).text;
       if (!text.trim()) return toast('복사할 문장이 없습니다.', 'err');
+      copyText(text).then(function () { toast('복사했습니다. 카톡·문자에 붙여 넣으세요.', 'ok'); })
+                    .catch(function () { toast('복사에 실패했습니다. 길게 눌러 직접 복사해 주세요.', 'err'); });
+    });
+  }
+
+  // ───────────────────────── 숙제 ─────────────────────────
+
+  var HW_STATE_BADGE = {
+    none:  { cls: 'draft',     label: '항목 없음' },
+    todo:  { cls: 'edited',    label: '미완료' },
+    doing: { cls: 'generated', label: '진행중' },
+    done:  { cls: 'final',     label: '완료' }
+  };
+
+  function hwBadge(hw) {
+    var sum = Store.summarize(hw);
+    var b = HW_STATE_BADGE[sum.state] || HW_STATE_BADGE.none;
+    var html = '<span class="badge badge--' + b.cls + '">' + esc(b.label) + '</span>';
+    if (sum.checked) html += ' <span class="badge badge--final">교사확인</span>';
+    return html;
+  }
+
+  /** 숙제 목록의 한 줄 */
+  function homeworkItemHTML(h) {
+    var sum = Store.summarize(h);
+    var texts = (h.base || []).concat(h.extra || []).map(function (i) { return i.text; }).join(', ');
+    var meta = [h.date, h.className, h.teacher].filter(Boolean).join(' · ');
+    if (h.dueDate) meta += ' · 제출 ' + h.dueDate;
+    return '<a class="list__item" href="#/homework/' + esc(h.id) + '">' +
+      '<div class="list__row"><span class="list__name">' + esc(h.studentName) + '</span>' + hwBadge(h) + '</div>' +
+      '<div class="list__meta">' + esc(meta) + ' · ' + sum.done + '/' + sum.total + ' 완료</div>' +
+      '<div class="list__excerpt">' + esc(texts) + '</div>' +
+    '</a>';
+  }
+
+  // ── 숙제 목록 (최근 기록 확인) ──
+  var hwFilter = { studentId: '', state: '', keyword: '' };
+
+  function renderHomeworks() {
+    setHeader('숙제 관리', '', false);
+    var students = Store.getStudents({ includeArchived: true });
+    var list = Store.getHomeworks(hwFilter);
+    var stats = Store.getStats();
+
+    var html = '';
+    html += '<div class="stats" style="grid-template-columns:repeat(3,1fr)">';
+    html += '<div class="stat"><span class="stat__num">' + stats.homeworksToday + '</span><span class="stat__label">오늘 배정</span></div>';
+    html += '<div class="stat ' + (stats.homeworksUnchecked ? 'stat--alert' : '') + '"><span class="stat__num">' + stats.homeworksUnchecked + '</span><span class="stat__label">교사 미확인</span></div>';
+    html += '<div class="stat"><span class="stat__num">' + stats.homeworksTotal + '</span><span class="stat__label">전체 기록</span></div>';
+    html += '</div>';
+
+    html += '<a class="btn btn--block" href="#/homework/new">＋ 숙제 배정하기</a>';
+
+    html += '<div class="filters" style="margin-top:16px">';
+    html += '<select id="hwStudent"><option value="">전체 학생</option>' + students.map(function (s) {
+      return '<option value="' + esc(s.id) + '"' + (hwFilter.studentId === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>';
+    }).join('') + '</select>';
+    html += '<select id="hwState"><option value="">전체 상태</option>' +
+      ['todo', 'doing', 'done'].map(function (k) {
+        return '<option value="' + k + '"' + (hwFilter.state === k ? ' selected' : '') + '>' + esc(HW_STATE_BADGE[k].label) + '</option>';
+      }).join('') + '</select>';
+    html += '<div class="full"><input type="search" id="hwKeyword" placeholder="숙제 내용·교사로 검색" value="' + esc(hwFilter.keyword) + '"></div>';
+    html += '</div>';
+
+    if (!list.length) {
+      html += '<div class="empty"><span class="empty__icon">📚</span>' +
+        (hwFilter.studentId || hwFilter.state || hwFilter.keyword ? '조건에 맞는 숙제 기록이 없습니다.' : '아직 배정된 숙제가 없습니다.') + '</div>';
+    } else {
+      html += '<div class="list__meta" style="margin-bottom:8px">' + list.length + '건</div>';
+      html += '<ul class="list">' + list.map(homeworkItemHTML).join('') + '</ul>';
+    }
+    view.innerHTML = html;
+
+    $('#hwStudent').addEventListener('change', function (e) { hwFilter.studentId = e.target.value; renderHomeworks(); });
+    $('#hwState').addEventListener('change', function (e) { hwFilter.state = e.target.value; renderHomeworks(); });
+    var kw = $('#hwKeyword');
+    kw.addEventListener('input', function () {
+      hwFilter.keyword = kw.value;
+      var pos = kw.selectionStart;
+      renderHomeworks();
+      var k2 = $('#hwKeyword'); k2.focus();
+      try { k2.setSelectionRange(pos, pos); } catch (e) {}
+    });
+  }
+
+  // ── 숙제 배정 / 수정 ──
+
+  /** 편집용 항목 줄 하나 */
+  function hwEditRow(kind, item) {
+    return '<div class="hw-edit" data-kind="' + kind + '" data-id="' + esc(item.id || '') + '">' +
+      '<input type="text" value="' + esc(item.text || '') + '" placeholder="숙제 내용">' +
+      '<button type="button" class="hw-item__del" aria-label="이 항목 빼기">×</button></div>';
+  }
+
+  function readEditRows(containerSel) {
+    return $$(containerSel + ' .hw-edit').map(function (row) {
+      return { id: row.dataset.id || undefined, text: row.querySelector('input').value };
+    }).filter(function (i) { return i.text.trim(); });
+  }
+
+  function bindEditList(containerSel, addBtnSel, kind) {
+    var box = $(containerSel);
+    box.addEventListener('click', function (e) {
+      if (e.target.classList.contains('hw-item__del')) {
+        e.target.closest('.hw-edit').remove();
+        if (!box.querySelector('.hw-edit')) box.insertAdjacentHTML('beforeend', hwEditRow(kind, {}));
+      }
+    });
+    $(addBtnSel).addEventListener('click', function () {
+      box.insertAdjacentHTML('beforeend', hwEditRow(kind, {}));
+      var rows = $$(containerSel + ' .hw-edit');
+      rows[rows.length - 1].querySelector('input').focus();
+    });
+  }
+
+  function renderHomeworkForm(id) {
+    var isNew = !id;
+    var record = isNew ? null : Store.getHomework(id);
+    if (!isNew && !record) { toast('숙제 기록을 찾을 수 없습니다.', 'err'); return go('#/homeworks'); }
+
+    var students = Store.getStudents();
+    if (!students.length) {
+      setHeader('숙제 배정', '', true);
+      view.innerHTML = '<div class="empty"><span class="empty__icon">👥</span>먼저 학생을 등록해야 숙제를 배정할 수 있습니다.</div>' +
+                       '<a class="btn btn--block" href="#/student/new">＋ 학생 추가하러 가기</a>';
+      return;
+    }
+
+    setHeader(isNew ? '숙제 배정' : '숙제 수정', '', true);
+    var teachers = Store.getTeachers();
+    var curStudentId = record ? record.studentId : '';
+    var baseItems = record ? record.base : [];
+    var extraItems = record ? record.extra : [];
+
+    var html = '<form id="hwForm"><div class="card">';
+
+    html += field('학생', '<select name="studentId" id="hwStudentSel" required><option value="">— 학생 선택 —</option>' +
+      students.map(function (s) {
+        var meta = [s.className, s.grade].filter(Boolean).join(' ');
+        return '<option value="' + esc(s.id) + '"' + (curStudentId === s.id ? ' selected' : '') + '>' +
+          esc(s.name) + (meta ? ' (' + esc(meta) + ')' : '') + '</option>';
+      }).join('') + '</select>', true, '학생을 고르면 기본 숙제가 자동으로 채워집니다.');
+
+    html += '<div class="filters">';
+    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">반 / 레벨</label>' +
+            '<input type="text" name="className" id="hwClass" value="' + esc(record ? record.className : '') + '" placeholder="자동 입력"></div>';
+    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">담당 교사</label>' +
+            '<input type="text" name="teacher" id="hwTeacher" value="' + esc(record ? record.teacher : '') + '" list="teacherList" placeholder="자동 입력"></div>';
+    html += '<datalist id="teacherList">' + teachers.map(function (t) { return '<option value="' + esc(t) + '">'; }).join('') + '</datalist>';
+    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">숙제 날짜<span class="req">*</span></label>' +
+            '<input type="date" name="date" value="' + esc(record ? record.date : Store.todayStr()) + '" required></div>';
+    html += '<div><label style="font-size:13px;font-weight:600;display:block;margin-bottom:6px">제출 예정일</label>' +
+            '<input type="date" name="dueDate" value="' + esc(record ? record.dueDate : '') + '"></div>';
+    html += '</div></div>';
+
+    // 기본 숙제
+    html += '<div class="card"><h3 class="card__title">기본 숙제 <small>학생에게 등록된 반복 숙제</small></h3>';
+    html += '<div id="baseList">' + (baseItems.length ? baseItems.map(function (i) { return hwEditRow('base', i); }).join('') : hwEditRow('base', {})) + '</div>';
+    html += '<div class="btn-row" style="margin-top:8px"><button type="button" class="btn btn--ghost btn--sm" id="addBase">＋ 기본 숙제 줄 추가</button>';
+    html += '<button type="button" class="btn btn--ghost btn--sm" id="reloadBase">↻ 기본 숙제 다시 불러오기</button></div>';
+    html += '<label style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;font-size:13px;color:var(--text-dim)">' +
+            '<input type="checkbox" id="saveAsDefault" style="width:auto;margin-top:3px">' +
+            '<span>여기서 고친 내용을 <b>이 학생의 기본 숙제로도 저장</b>합니다.<br>' +
+            '체크하지 않으면 오늘 기록에만 반영되고 학생의 기본 숙제는 그대로 유지됩니다.</span></label>';
+    html += '</div>';
+
+    // 오늘 추가 숙제
+    html += '<div class="card"><h3 class="card__title">오늘 추가 숙제 <small>이 날짜에만 해당</small></h3>';
+    html += '<div id="extraList">' + (extraItems.length ? extraItems.map(function (i) { return hwEditRow('extra', i); }).join('') : hwEditRow('extra', {})) + '</div>';
+    html += '<div class="btn-row" style="margin-top:8px"><button type="button" class="btn btn--ghost btn--sm" id="addExtra">＋ 추가 숙제 줄 추가</button></div>';
+    html += '</div>';
+
+    html += '<div class="btn-row"><button type="submit" class="btn btn--block">' + (isNew ? '저장하기' : '수정 내용 저장') + '</button></div>';
+    html += '</form>';
+    view.innerHTML = html;
+
+    bindEditList('#baseList', '#addBase', 'base');
+    bindEditList('#extraList', '#addExtra', 'extra');
+
+    /** 학생의 기본 숙제를 폼에 채운다 (기능 1) */
+    function loadDefaults(studentId, opts) {
+      var student = Store.getStudent(studentId);
+      if (!student) return;
+      if (opts && opts.fillMeta) {
+        if (!$('#hwClass').value.trim()) $('#hwClass').value = student.className || '';
+        if (!$('#hwTeacher').value.trim()) $('#hwTeacher').value = student.teacher || '';
+      }
+      var defaults = Store.getDefaultHomework(studentId);
+      var box = $('#baseList');
+      if (!defaults.length) {
+        box.innerHTML = hwEditRow('base', {});
+        toast('이 학생은 등록된 기본 숙제가 없습니다.', 'err');
+        return;
+      }
+      box.innerHTML = defaults.map(function (i) { return hwEditRow('base', i); }).join('');
+      toast('기본 숙제 ' + defaults.length + '개를 불러왔습니다.', 'ok');
+    }
+
+    $('#hwStudentSel').addEventListener('change', function (e) {
+      var sid = e.target.value;
+      if (!sid) return;
+      var student = Store.getStudent(sid);
+      $('#hwClass').value = student.className || '';
+      $('#hwTeacher').value = student.teacher || '';
+      loadDefaults(sid, { fillMeta: false });
+    });
+
+    $('#reloadBase').addEventListener('click', function () {
+      var sid = $('#hwStudentSel').value;
+      if (!sid) return toast('먼저 학생을 선택해 주세요.', 'err');
+      confirmBox('지금 입력한 기본 숙제를 버리고,\n이 학생에게 등록된 기본 숙제를 다시 불러올까요?', '다시 불러오기').then(function (ok) {
+        if (ok) loadDefaults(sid, { fillMeta: true });
+      });
+    });
+
+    // 새로 만들 때 학생이 이미 선택돼 있으면 곧바로 채운다
+    if (isNew && curStudentId) loadDefaults(curStudentId, { fillMeta: true });
+
+    $('#hwForm').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var fd = new FormData(e.target);
+      var base = readEditRows('#baseList');
+      var extra = readEditRows('#extraList');
+      var data = {
+        id: isNew ? null : id,
+        studentId: fd.get('studentId'),
+        className: fd.get('className'),
+        teacher: fd.get('teacher'),
+        date: fd.get('date'),
+        dueDate: fd.get('dueDate'),
+        base: base,
+        extra: extra
+      };
+      var r = Store.saveHomework(data);
+      if (!r.ok) return toast(r.error, 'err');
+
+      // 기본 숙제 마스터 갱신은 체크했을 때만 (기능 2)
+      if ($('#saveAsDefault').checked) {
+        var r2 = Store.setDefaultHomework(data.studentId, base);
+        if (!r2.ok) toast(r2.error, 'err');
+        else toast('저장했습니다. 기본 숙제도 갱신했습니다.', 'ok');
+      } else {
+        toast('저장했습니다.', 'ok');
+      }
+      go('#/homework/' + r.id);
+    });
+  }
+
+  // ── 숙제 상세 (완료 체크 · 교사 확인 · 학부모 문장) ──
+
+  function hwCheckRow(hw, kind, item) {
+    return '<div class="hw-item">' +
+      '<input type="checkbox" class="hw-item__check" data-kind="' + kind + '" data-id="' + esc(item.id) + '"' +
+        (item.done ? ' checked' : '') + ' aria-label="완료 표시">' +
+      '<span class="hw-item__text' + (item.done ? ' done' : '') + '">' + esc(item.text) +
+      '<span class="hw-origin hw-origin--' + kind + '">' + (kind === 'base' ? '기본' : '추가') + '</span></span>' +
+    '</div>';
+  }
+
+  /** 진행률·상태 배지만 다시 계산해 갱신한다 */
+  function refreshHomeworkProgress(id) {
+    var hw = Store.getHomework(id);
+    if (!hw) return;
+    var sum = Store.summarize(hw);
+    var pct = sum.total ? Math.round(sum.done / sum.total * 100) : 0;
+    var bar = $('#hwProgressBar');
+    var text = $('#hwProgressText');
+    var badge = $('#hwStateBadge');
+    if (bar) bar.style.width = pct + '%';
+    if (text) text.textContent = '전체 ' + sum.total + '개 중 ' + sum.done + '개 완료 (' + pct + '%)';
+    if (badge) badge.innerHTML = hwBadge(hw);
+  }
+
+  function renderHomeworkDetail(id) {
+    var hw = Store.getHomework(id);
+    if (!hw) { toast('숙제 기록을 찾을 수 없습니다.', 'err'); return go('#/homeworks'); }
+    var settings = Store.getSettings();
+    var sum = Store.summarize(hw);
+    setHeader(hw.studentName + ' 숙제', FeedbackEngine.formatDate(hw.date), true);
+
+    var html = '';
+
+    html += '<div class="card"><h3 class="card__title">숙제 현황 <span id="hwStateBadge">' + hwBadge(hw) + '</span></h3>';
+    html += '<dl class="kv">';
+    html += '<dt>반 / 레벨</dt><dd>' + esc(hw.className || '-') + '</dd>';
+    html += '<dt>담당 교사</dt><dd>' + esc(hw.teacher || '-') + '</dd>';
+    html += '<dt>숙제 날짜</dt><dd>' + esc(FeedbackEngine.formatDate(hw.date)) + '</dd>';
+    html += '<dt>제출 예정일</dt><dd>' + (hw.dueDate ? esc(FeedbackEngine.formatDate(hw.dueDate)) : '지정 안 함') + '</dd>';
+    html += '</dl>';
+    var pct = sum.total ? Math.round(sum.done / sum.total * 100) : 0;
+    html += '<div class="progress"><div class="progress__bar" id="hwProgressBar" style="width:' + pct + '%"></div></div>';
+    html += '<div class="list__meta" id="hwProgressText">전체 ' + sum.total + '개 중 ' + sum.done + '개 완료 (' + pct + '%)</div>';
+    html += '<div class="btn-row" style="margin-top:12px"><a class="btn btn--ghost btn--sm" href="#/homework/' + esc(id) + '/edit">숙제 수정</a></div>';
+    html += '</div>';
+
+    html += '<div class="card"><h3 class="card__title">기본 숙제 <small>' + (hw.base || []).length + '개</small></h3>';
+    html += (hw.base || []).length
+      ? (hw.base).map(function (i) { return hwCheckRow(hw, 'base', i); }).join('')
+      : '<div class="list__meta">등록된 기본 숙제가 없습니다.</div>';
+    html += '</div>';
+
+    html += '<div class="card"><h3 class="card__title">오늘 추가 숙제 <small>' + (hw.extra || []).length + '개</small></h3>';
+    html += (hw.extra || []).length
+      ? (hw.extra).map(function (i) { return hwCheckRow(hw, 'extra', i); }).join('')
+      : '<div class="list__meta">오늘 추가된 숙제가 없습니다.</div>';
+    html += '</div>';
+
+    // 교사 확인
+    var tc = hw.teacherCheck || {};
+    html += '<div class="card"><h3 class="card__title">교사 확인</h3>';
+    html += '<div class="field"><textarea id="checkNote" placeholder="확인 메모 (선택)">' + esc(tc.note || '') + '</textarea></div>';
+    if (tc.checked) {
+      html += '<div class="note note--ok">' + esc(tc.by || '담당 교사') + ' · ' +
+              esc(new Date(tc.at || Date.now()).toLocaleString('ko-KR')) + ' 확인 완료</div>';
+      html += '<button class="btn btn--ghost btn--block" id="uncheckBtn">확인 표시 해제</button>';
+    } else {
+      html += '<button class="btn btn--ok btn--block" id="checkBtn">✅ 확인 완료로 표시</button>';
+    }
+    html += '</div>';
+
+    // 학부모 전송 문장
+    html += '<h2 class="section-title">학부모에게 보낼 숙제 문장</h2>';
+    html += '<div id="hwWarnArea"></div>';
+    html += '<div class="fb-preview" id="hwMessage">' + esc(hw.message && hw.message.text ? hw.message.text : '아래 "문장 만들기" 버튼을 눌러 주세요.') + '</div>';
+    html += '<div class="btn-row" style="margin-top:12px">';
+    html += '<button class="btn" id="hwGenBtn">📝 문장 만들기</button>';
+    html += '<button class="btn btn--ghost" id="hwCopyBtn">📋 복사</button>';
+    html += '</div>';
+
+    view.innerHTML = html;
+
+    // 완료 체크 — 화면 전체를 다시 그리면 보던 위치를 잃어버리므로 해당 부분만 갱신한다
+    $$('.hw-item__check').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var r = Store.setHomeworkItemDone(id, cb.dataset.kind, cb.dataset.id, cb.checked);
+        if (!r.ok) { toast(r.error, 'err'); cb.checked = !cb.checked; return; }
+        var label = cb.parentNode.querySelector('.hw-item__text');
+        if (label) label.classList.toggle('done', cb.checked);
+        refreshHomeworkProgress(id);
+      });
+    });
+
+    var checkBtn = $('#checkBtn');
+    if (checkBtn) checkBtn.addEventListener('click', function () {
+      var r = Store.setTeacherCheck(id, { checked: true, by: hw.teacher, note: $('#checkNote').value });
+      if (!r.ok) return toast(r.error, 'err');
+      toast('확인 완료로 표시했습니다.', 'ok');
+      renderHomeworkDetail(id);
+    });
+
+    var uncheckBtn = $('#uncheckBtn');
+    if (uncheckBtn) uncheckBtn.addEventListener('click', function () {
+      var r = Store.setTeacherCheck(id, { checked: false, note: $('#checkNote').value });
+      if (!r.ok) return toast(r.error, 'err');
+      toast('확인 표시를 해제했습니다.', 'ok');
+      renderHomeworkDetail(id);
+    });
+
+    $('#hwGenBtn').addEventListener('click', function () {
+      var latest = Store.getHomework(id);
+      var text = HomeworkEngine.buildMessage(latest, settings);
+      $('#hwMessage').textContent = text;
+      var check = HomeworkEngine.verifyMessage(text, latest);
+      renderWarningsInto('#hwWarnArea', check);
+      var r = Store.saveHomeworkMessage(id, text);
+      if (!r.ok) return toast(r.error, 'err');
+      toast('문장을 만들었습니다.', 'ok');
+    });
+
+    $('#hwCopyBtn').addEventListener('click', function () {
+      var text = $('#hwMessage').textContent;
+      if (!text.trim() || text.indexOf('버튼을 눌러') !== -1) return toast('먼저 문장을 만들어 주세요.', 'err');
       copyText(text).then(function () { toast('복사했습니다. 카톡·문자에 붙여 넣으세요.', 'ok'); })
                     .catch(function () { toast('복사에 실패했습니다. 길게 눌러 직접 복사해 주세요.', 'err'); });
     });
@@ -828,6 +1246,13 @@
         case 'feedback':
           if (!p[1]) return go('#/lessons');
           renderFeedback(p[1]); setTab('lessons'); break;
+        case 'homeworks': renderHomeworks(); setTab('homeworks'); break;
+        case 'homework':
+          if (p[1] === 'new') renderHomeworkForm(null);
+          else if (p[2] === 'edit') renderHomeworkForm(p[1]);
+          else if (p[1]) renderHomeworkDetail(p[1]);
+          else return go('#/homeworks');
+          setTab('homeworks'); break;
         case 'settings': renderSettings(); setTab('settings'); break;
         case 'home':
         default: renderHome(); setTab('home'); break;
